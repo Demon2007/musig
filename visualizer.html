@@ -499,27 +499,70 @@ function parseLRC(raw) {
   }).filter(Boolean);
 }
 
-async function fetchLRC(artist, title) {
-  const tries = [];
-  if (artist && title) tries.push({ artist_name:artist, track_name:title });
-  if (title)           tries.push({ track_name: title });
-  if (artist && title) tries.push({ q: `${artist} ${title}` });
-  if (title)           tries.push({ q: title });
+// Равномерно раскидать нетайминговый текст по длине трека
+function plainToTimed(plain, duration) {
+  const lines = plain.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && !/^\[/.test(l));  // убрать пустые и метаданные [Verse 1]
+  if (!lines.length) return [];
+  const pad   = Math.min(duration * 0.04, 4);   // небольшой отступ в начале
+  const usable = Math.max(duration - pad * 2, duration * 0.85);
+  const step  = usable / lines.length;
+  return lines.map((t, i) => ({ t, s: pad + i * step, approx: true }));
+}
 
-  for (const q of tries) {
-    try {
-      const ac = new AbortController();
-      const tid = setTimeout(() => ac.abort(), 7000);
-      const url = q.q
-        ? `https://lrclib.net/api/search?q=${encodeURIComponent(q.q)}`
-        : `https://lrclib.net/api/get?${new URLSearchParams(q)}`;
-      const res = await fetch(url, { signal: ac.signal });
-      clearTimeout(tid);
-      if (!res.ok) continue;
-      const data = await res.json();
-      const item = Array.isArray(data) ? data[0] : data;
-      if (item?.syncedLyrics) return { lrc: item.syncedLyrics, source: item };
-    } catch { /* следующий запрос */ }
+// Fetch с таймаутом → null если ошибка
+async function fetchJson(url, ms = 9000) {
+  const ac = new AbortController();
+  const tid = setTimeout(() => ac.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ac.signal });
+    clearTimeout(tid);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { clearTimeout(tid); return null; }
+}
+
+// Оценить насколько результат совпадает с запросом
+function matchScore(item, artist, title) {
+  let s = 0;
+  const ia = (item.artistName || '').toLowerCase();
+  const it = (item.trackName  || '').toLowerCase();
+  const a  = artist.toLowerCase(), t = title.toLowerCase();
+  if (it === t)                         s += 20;
+  else if (it.includes(t) || t.includes(it)) s += 10;
+  if (a && (ia === a || ia.includes(a) || a.includes(ia))) s += 8;
+  if (item.syncedLyrics) s += 6;   // предпочитаем синхронизированный
+  if (item.plainLyrics)  s += 2;
+  return s;
+}
+
+async function fetchLRC(artist, title) {
+  // Запросы: сначала поиск (гибко), потом точное совпадение
+  const urls = [];
+  if (artist && title) urls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(artist+' '+title)}`);
+  if (title)           urls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(title)}`);
+  // Поиск по первым 4 словам названия (полезно для длинных)
+  const shortTitle = title.split(/\s+/).slice(0,4).join(' ');
+  if (shortTitle !== title) urls.push(`https://lrclib.net/api/search?q=${encodeURIComponent(shortTitle)}`);
+  // Точный GET (только с исполнителем и названием)
+  if (artist && title) urls.push(`https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`);
+
+  for (const url of urls) {
+    const data = await fetchJson(url);
+    if (!data) continue;
+
+    const items = Array.isArray(data) ? data : (data.trackName ? [data] : []);
+    if (!items.length) continue;
+
+    // Выбрать лучший результат
+    const best = items
+      .map(i => ({ i, s: matchScore(i, artist, title) }))
+      .sort((a, b) => b.s - a.s)[0]?.i;
+    if (!best) continue;
+
+    if (best.syncedLyrics) return { synced: true,  text: best.syncedLyrics };
+    if (best.plainLyrics)  return { synced: false, text: best.plainLyrics  };
   }
   return null;
 }
@@ -616,22 +659,42 @@ async function loadFile(file) {
   showStatus('Ищу текст песни…');
   const result = await fetchLRC(artist, title);
 
-  if (result) {
-    lyrics = parseLRC(result.lrc);
+  if (result && result.synced) {
+    // ── Синхронизированный LRC ──────────────
+    lyrics = parseLRC(result.text);
     detectChorus(lyrics);
     setLyricsVisible(true);
     document.getElementById('btn-lyrics').classList.add('active');
     showStatus(`✓ Текст найден — ${lyrics.length} строк`, 3500);
+
+  } else if (result && !result.synced) {
+    // ── Обычный текст — нужна длина трека ───
+    showStatus('Текст найден, жду длительность трека…');
+    function applyPlain() {
+      if (!song.duration || song.duration < 1) return false;
+      lyrics = plainToTimed(result.text, song.duration);
+      detectChorus(lyrics);
+      setLyricsVisible(true);
+      document.getElementById('btn-lyrics').classList.add('active');
+      showStatus(`✓ Текст найден (приблизительная синхронизация)`, 4000);
+      return true;
+    }
+    if (!applyPlain()) {
+      // Ждём метаданных (длительность ещё неизвестна)
+      song.addEventListener('loadedmetadata', function onMeta() {
+        song.removeEventListener('loadedmetadata', onMeta);
+        applyPlain();
+      });
+    }
+
   } else {
-    showStatus('Текст не найден — попробуй поиск вручную', 5000);
+    // ── Не найдено — открыть поиск вручную ──
+    showStatus('Текст не найден — уточни название', 5000);
     document.getElementById('no-lyrics').classList.add('show');
-    // Автоматически открыть поиск с подсказкой
     document.getElementById('inp-artist').value = artist;
     document.getElementById('inp-title').value  = title;
-    document.getElementById('search-auto').textContent =
-      displayName || 'Неизвестный трек';
-    document.getElementById('search-reason').textContent =
-      'Текст не найден автоматически. Уточни название:';
+    document.getElementById('search-auto').textContent = displayName || 'Неизвестный трек';
+    document.getElementById('search-reason').textContent = 'Не удалось найти автоматически. Проверь название:';
     document.getElementById('search-status').textContent = '';
     document.getElementById('search-overlay').classList.add('show');
   }
@@ -667,19 +730,28 @@ document.getElementById('search-btn').addEventListener('click', async () => {
 
   const result = await fetchLRC(artist, title);
   if (result) {
-    lyrics = parseLRC(result.lrc);
-    detectChorus(lyrics);
     lastIdx = -2;
     currentArtist = artist; currentTitle = title;
     const displayName = artist ? `${artist} — ${title}` : title;
     document.getElementById('track-title').textContent = displayName;
+
+    if (result.synced) {
+      lyrics = parseLRC(result.text);
+      ss.textContent = `✓ Найдено (${lyrics.length} строк)`;
+    } else {
+      // plain — нужна длина
+      const dur = song.duration;
+      lyrics = plainToTimed(result.text, dur > 0 ? dur : 200);
+      ss.textContent = `✓ Найдено (приблизительная синхронизация)`;
+    }
+    detectChorus(lyrics);
     setLyricsVisible(true);
     document.getElementById('btn-lyrics').classList.add('active');
     document.getElementById('search-overlay').classList.remove('show');
     document.getElementById('no-lyrics').classList.remove('show');
-    showStatus(`✓ Текст найден — ${lyrics.length} строк`, 3000);
+    showStatus(`✓ Текст загружен`, 2500);
   } else {
-    ss.textContent = 'Не найдено — попробуй изменить написание';
+    ss.textContent = 'Не найдено — попробуй другое написание';
     ss.className = 'err';
   }
 });
