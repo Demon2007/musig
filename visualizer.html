@@ -209,6 +209,33 @@
     #no-lyrics:hover { color:rgba(255,255,255,.65); }
     #no-lyrics.show { display:block; }
 
+    /* ═══ СИНХРОНИЗАЦИЯ ══════════════════════= */
+    #sync-bar {
+      position:fixed; bottom:50px; left:50%; transform:translateX(-50%);
+      z-index:22; display:none; align-items:center; gap:0;
+      background:rgba(0,0,0,.7); border:1px solid rgba(255,255,255,.12);
+      backdrop-filter:blur(8px); padding:6px 4px;
+    }
+    #sync-bar.show { display:flex; }
+    .sync-btn {
+      width:32px; height:32px; font-size:15px; line-height:32px; text-align:center;
+      background:transparent; border:none; color:rgba(255,255,255,.55);
+      cursor:pointer; transition:color .2s; user-select:none;
+    }
+    .sync-btn:hover { color:#fff; }
+    #sync-val {
+      min-width:62px; text-align:center; font-size:11px; letter-spacing:2px;
+      color:rgba(255,255,255,.7); padding:0 4px;
+    }
+    #sync-val.zero { color:rgba(255,255,255,.3); }
+    #sync-hint {
+      position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
+      z-index:22; font-size:10px; letter-spacing:3px; text-transform:uppercase;
+      color:rgba(255,255,255,.25); white-space:nowrap; pointer-events:none;
+      opacity:0; transition:opacity .4s;
+    }
+    #sync-hint.show { opacity:1; }
+
     /* ═══ МОБИЛКА ════════════════════════════= */
     @media (max-width:600px) {
       #upload-h1 { font-size:22px; }
@@ -292,6 +319,14 @@
 
 <div id="fetch-status"></div>
 <div id="no-lyrics" onclick="openSearch()">🔍 Найти текст</div>
+
+<!-- ── Синхронизация текста ──────────────── -->
+<div id="sync-bar">
+  <button class="sync-btn" id="sync-minus" title="Текст раньше (←)">◀</button>
+  <div id="sync-val" class="zero">± 0.0 с</div>
+  <button class="sync-btn" id="sync-plus"  title="Текст позже (→)">▶</button>
+</div>
+<div id="sync-hint">◀ ▶ — синхронизация</div>
 
 <!-- ── Топбар ────────────────────────────────── -->
 <div id="topbar">
@@ -705,6 +740,39 @@ async function fetchLRC(artist, title) {
 }
 
 // ════════════════════════════════════════════
+//  СИНХРОНИЗАЦИЯ (смещение в секундах)
+// ════════════════════════════════════════════
+let syncOffset = 0;   // > 0 → текст раньше;  < 0 → текст позже
+
+function loadSyncOffset(key) {
+  try { syncOffset = parseFloat(localStorage.getItem('sync_' + key) || '0') || 0; } catch { syncOffset = 0; }
+  renderSyncVal();
+}
+function saveSyncOffset(key) {
+  try { localStorage.setItem('sync_' + key, syncOffset.toFixed(1)); } catch {}
+}
+function renderSyncVal() {
+  const el = document.getElementById('sync-val');
+  const s = syncOffset.toFixed(1);
+  el.textContent = syncOffset > 0 ? `+${s} с` : syncOffset < 0 ? `${s} с` : '± 0.0 с';
+  el.className = syncOffset === 0 ? 'zero' : '';
+}
+function changeSyncOffset(delta) {
+  syncOffset = Math.round((syncOffset + delta) * 10) / 10;
+  syncOffset = Math.max(-5, Math.min(5, syncOffset));
+  renderSyncVal();
+  lastIdx = -2;  // пересчитать текущую строку
+  saveSyncOffset(currentArtist + '_' + currentTitle);
+  // Показать подсказку
+  const hint = document.getElementById('sync-hint');
+  hint.classList.add('show');
+  clearTimeout(hint._t); hint._t = setTimeout(() => hint.classList.remove('show'), 1800);
+}
+
+document.getElementById('sync-minus').addEventListener('click', () => changeSyncOffset(+0.2));
+document.getElementById('sync-plus').addEventListener('click',  () => changeSyncOffset(-0.2));
+
+// ════════════════════════════════════════════
 //  ОТОБРАЖЕНИЕ ТЕКСТА
 // ════════════════════════════════════════════
 let lyrics = [], lastIdx = -2;
@@ -732,31 +800,35 @@ function applyLine(el, obj, cls) {
 function updateLyrics(ct) {
   if (!lyrics.length) return;
 
+  // Применяем смещение синхронизации:
+  // syncOffset > 0 → сдвигаем ct вперёд → текст появляется раньше
+  const t = ct + syncOffset;
+
   // До первой строки — ничего не показываем
-  if (ct < lyrics[0].s) {
+  if (t < lyrics[0].s) {
     if (lastIdx !== -1) {
       lastIdx = -1;
-      elPrev.className = 'lline hidden'; elPrev.textContent = '';
-      elCur.className  = 'lline hidden'; elCur.textContent  = '';
-      elNxt.className  = 'lline hidden'; elNxt.textContent  = '';
+      elPrev.className='lline hidden'; elPrev.textContent='';
+      elCur.className ='lline hidden'; elCur.textContent ='';
+      elNxt.className ='lline hidden'; elNxt.textContent ='';
     }
     return;
   }
 
-  // Бинарный поиск: найти последнюю строку с s <= ct
-  let lo = 0, hi = lyrics.length - 1, idx = 0;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (lyrics[mid].s <= ct) { idx = mid; lo = mid + 1; }
-    else hi = mid - 1;
+  // Бинарный поиск: последняя строка где s <= t
+  let lo=0, hi=lyrics.length-1, idx=0;
+  while (lo<=hi) {
+    const mid=(lo+hi)>>1;
+    if (lyrics[mid].s<=t) { idx=mid; lo=mid+1; }
+    else hi=mid-1;
   }
 
-  if (idx === lastIdx) return;
-  lastIdx = idx;
+  if (idx===lastIdx) return;
+  lastIdx=idx;
 
-  applyLine(elPrev, lyrics[idx - 1] || null, 'prev');
-  applyLine(elCur,  lyrics[idx]     || null, 'cur');
-  applyLine(elNxt,  lyrics[idx + 1] || null, 'nxt');
+  applyLine(elPrev, lyrics[idx-1]||null, 'prev');
+  applyLine(elCur,  lyrics[idx]  ||null, 'cur');
+  applyLine(elNxt,  lyrics[idx+1]||null, 'nxt');
 }
 
 (function lyricsLoop(){
@@ -816,6 +888,10 @@ async function loadFile(file) {
   document.getElementById('track-title').textContent = displayName;
   document.getElementById('topbar').classList.add('show');
   document.getElementById('time-display').classList.add('show');
+
+  // Загрузить смещение синхронизации для этого трека
+  loadSyncOffset(artist + '_' + title);
+  document.getElementById('sync-bar').classList.add('show');
 
   const up = document.getElementById('upload');
   up.classList.add('fade'); setTimeout(()=>up.style.display='none',700);
@@ -950,10 +1026,12 @@ document.getElementById('btn-new').addEventListener('click',()=>{
   document.getElementById('no-lyrics').classList.remove('show');
   document.getElementById('topbar').classList.remove('show');
   document.getElementById('time-display').classList.remove('show');
+  document.getElementById('sync-bar').classList.remove('show');
   document.getElementById('progress-fill').style.width='0%';
   document.getElementById('btn-pause').textContent='⏸ Пауза';
   document.getElementById('btn-lyrics').classList.remove('active');
   if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl=null; }
+  syncOffset=0; renderSyncVal();
   setMood('neutral', true);
   const up = document.getElementById('upload');
   up.style.display=''; requestAnimationFrame(()=>up.classList.remove('fade'));
@@ -973,9 +1051,12 @@ pw.addEventListener('touchmove', e=>{e.preventDefault();seekTo(e.touches[0].clie
 // Клавиши
 document.addEventListener('keydown',e=>{
   if (e.target.tagName==='INPUT') return;
-  if (e.code==='Space')      { e.preventDefault(); document.getElementById('btn-pause').click(); }
-  if (e.code==='ArrowRight') { if(song.duration){song.currentTime=Math.min(song.duration,song.currentTime+10);lastIdx=-2;} }
-  if (e.code==='ArrowLeft')  { song.currentTime=Math.max(0,song.currentTime-10);lastIdx=-2; }
+  if (e.code==='Space')        { e.preventDefault(); document.getElementById('btn-pause').click(); }
+  if (e.code==='ArrowRight')   { if(song.duration){song.currentTime=Math.min(song.duration,song.currentTime+10);lastIdx=-2;} }
+  if (e.code==='ArrowLeft')    { song.currentTime=Math.max(0,song.currentTime-10);lastIdx=-2; }
+  // Синхронизация: [ = текст раньше, ] = текст позже
+  if (e.code==='BracketLeft')  { e.preventDefault(); changeSyncOffset(+0.2); }
+  if (e.code==='BracketRight') { e.preventDefault(); changeSyncOffset(-0.2); }
 });
 
 // ════════════════════════════════════════════
