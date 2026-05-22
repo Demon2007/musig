@@ -1,259 +1,182 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#07071a">
-  <title>Music Player</title>
-  <style>
-    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-    html, body { width:100vw; height:100vh; overflow:hidden; background:#000; font-family:Georgia,serif; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#030310">
+<title>Music Player</title>
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100vw;height:100vh;overflow:hidden;background:#030310;font-family:'Georgia',serif}
 
-    #main  { display:block; position:fixed; inset:0; z-index:0; pointer-events:none; }
-    #bloom { display:block; position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.55; mix-blend-mode:screen; }
+/* ── Canvases ──────────────────────────────── */
+#c-bg,#c-fx,#c-bloom{display:block;position:fixed;inset:0;pointer-events:none}
+#c-bg   {z-index:0}
+#c-fx   {z-index:1}
+#c-bloom{z-index:2;opacity:.5;mix-blend-mode:screen}
 
-    /* ═══ ЗАГРУЗОЧНЫЙ ЭКРАН ═══════════════════ */
-    #upload {
-      position:fixed; inset:0; z-index:30;
-      display:flex; align-items:center; justify-content:center;
-      background:radial-gradient(ellipse at 50% 60%,#0d0d2e 0%,#04040f 100%);
-      transition:opacity .7s ease;
-    }
-    #upload.fade { opacity:0; pointer-events:none; }
+/* ── Upload screen ─────────────────────────── */
+#upload{
+  position:fixed;inset:0;z-index:50;
+  display:flex;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at 50% 55%,#0a0a28 0%,#030310 100%);
+  transition:opacity .8s ease
+}
+#upload.fade{opacity:0;pointer-events:none}
+#upload-card{display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 24px;max-width:500px;width:100%}
+#upload-icon{font-size:68px;margin-bottom:20px;animation:levitate 3s ease-in-out infinite}
+@keyframes levitate{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-14px) scale(1.06)}}
+#upload-h1{font-size:28px;font-weight:300;color:#fff;letter-spacing:4px;margin-bottom:8px}
+#upload-p{font-size:12px;color:rgba(255,255,255,.28);letter-spacing:5px;text-transform:uppercase;margin-bottom:36px}
+#upload-btn{
+  display:inline-flex;align-items:center;gap:10px;cursor:pointer;
+  padding:15px 40px;font:14px Georgia;letter-spacing:4px;text-transform:uppercase;
+  color:#fff;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.06);
+  transition:all .3s;margin-bottom:14px
+}
+#upload-btn:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.6);letter-spacing:6px}
+#file-input{display:none}
+#upload-drag{font-size:11px;color:rgba(255,255,255,.16);letter-spacing:4px;text-transform:uppercase;margin-bottom:32px}
+#recent-wrap{width:100%;max-width:420px;margin-top:4px}
+#recent-label{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,.2);margin-bottom:10px}
+#recent-list{display:flex;flex-direction:column;gap:5px;max-height:130px;overflow-y:auto}
+#recent-list::-webkit-scrollbar{width:2px}
+#recent-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12)}
+.recent-item{display:flex;align-items:center;gap:12px;padding:9px 14px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);cursor:pointer;transition:all .2s;text-align:left}
+.recent-item:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2)}
+.ri-icon{font-size:15px;flex-shrink:0}
+.ri-name{font-size:13px;color:rgba(255,255,255,.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+body.dropping #upload{border:2px solid rgba(140,140,255,.4)}
 
-    #upload-card {
-      display:flex; flex-direction:column; align-items:center;
-      gap:0; text-align:center; padding:0 20px; max-width:480px; width:100%;
-    }
-    #upload-logo { font-size:64px; margin-bottom:18px; animation:pulse 2.5s ease-in-out infinite; }
-    @keyframes pulse { 0%,100%{transform:scale(1)} 50%{transform:scale(1.08)} }
-    #upload-h1 { font-size:28px; font-weight:300; color:#fff; letter-spacing:3px; margin-bottom:8px; }
-    #upload-p  { font-size:13px; color:rgba(255,255,255,.3); letter-spacing:3px; text-transform:uppercase; margin-bottom:36px; }
+/* ── Search overlay ────────────────────────── */
+#search-overlay{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(3,3,16,.93);backdrop-filter:blur(16px)}
+#search-overlay.show{display:flex}
+#search-card{width:min(520px,92vw);padding:38px 42px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.1)}
+#sc-top{display:flex;align-items:center;gap:16px;margin-bottom:26px}
+#sc-icon{font-size:30px}
+#sc-h{font-size:18px;color:#fff;font-weight:300}
+#sc-sub{font-size:12px;color:rgba(255,255,255,.35);letter-spacing:2px;margin-top:3px}
+#sc-notice{font-size:11px;color:rgba(255,165,80,.65);letter-spacing:2px;margin-bottom:18px;padding:9px 14px;background:rgba(255,140,50,.05);border-left:2px solid rgba(255,165,80,.3);display:none}
+#sc-notice.show{display:block}
+.s-field{margin-bottom:10px}
+.s-label{font-size:10px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.28);margin-bottom:5px;display:block}
+.s-input{width:100%;padding:12px 16px;font:16px Georgia;color:#fff;letter-spacing:1px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);outline:none;transition:border-color .3s;-webkit-appearance:none;appearance:none}
+.s-input:focus{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.09)}
+.s-input::placeholder{color:rgba(255,255,255,.18);font-size:14px}
+#s-btns{display:flex;gap:10px;margin-top:18px}
+#search-btn{flex:1;padding:13px;font:13px Georgia;letter-spacing:4px;text-transform:uppercase;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.28);color:#fff;cursor:pointer;transition:all .25s}
+#search-btn:hover{background:rgba(255,255,255,.2)}
+#skip-btn{padding:13px 20px;font:12px Georgia;letter-spacing:3px;text-transform:uppercase;background:transparent;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.35);cursor:pointer;transition:all .25s}
+#skip-btn:hover{color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.3)}
+#s-status{font-size:11px;letter-spacing:3px;margin-top:12px;min-height:16px;color:rgba(140,255,140,.7)}
+#s-status.err{color:rgba(255,110,90,.7)}
+#s-tips{margin-top:12px;display:none}
+#s-tips.show{display:block}
+#s-tips-label{font-size:10px;color:rgba(255,255,255,.18);letter-spacing:3px;text-transform:uppercase;margin-bottom:7px}
+.tip-chip{display:inline-block;padding:4px 12px;font-size:11px;letter-spacing:2px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.45);cursor:pointer;margin-right:6px;transition:all .2s}
+.tip-chip:hover{background:rgba(255,255,255,.14);color:#fff}
 
-    #upload-btn-wrap { position:relative; margin-bottom:16px; }
-    #upload-btn {
-      display:inline-flex; align-items:center; gap:10px; cursor:pointer;
-      padding:14px 36px; font:14px Georgia; letter-spacing:4px; text-transform:uppercase;
-      color:#fff; border:1px solid rgba(255,255,255,.35);
-      background:rgba(255,255,255,.07); transition:all .3s;
-    }
-    #upload-btn:hover { background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.6); }
-    #file-input { display:none; }
-    #upload-drag-hint { font-size:11px; color:rgba(255,255,255,.2); letter-spacing:3px; text-transform:uppercase; margin-bottom:30px; }
+/* ── Lyrics ────────────────────────────────── */
+#lyrics-wrap{
+  position:fixed;bottom:0;left:0;right:0;z-index:10;
+  display:none;flex-direction:column;align-items:center;
+  padding:0 16px 50px;pointer-events:none
+}
+#lyrics-box{
+  max-width:860px;width:100%;text-align:center;
+  background:rgba(2,2,18,.55);border-radius:18px;
+  padding:16px 40px 20px;
+  border:1px solid rgba(255,255,255,.05);
+  backdrop-filter:blur(12px);
+  box-shadow:0 0 60px rgba(0,0,0,.6)
+}
+.ll{transition:opacity .45s ease,font-size .45s ease,color .45s ease,text-shadow .45s ease,transform .45s ease;line-height:1.55;will-change:opacity,transform;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ll.p2{font-size:12px;color:rgba(255,255,255,.2);opacity:.7;margin-bottom:4px;transform:translateY(0)}
+.ll.p1{font-size:16px;color:rgba(255,255,255,.38);opacity:.85;margin-bottom:5px;transform:translateY(0)}
+.ll.c0{font-size:26px;color:#fff;opacity:1;margin-bottom:5px;text-shadow:0 0 30px rgba(255,255,255,.4);transform:translateY(0)}
+.ll.n1{font-size:16px;color:rgba(255,255,255,.38);opacity:.85;margin-top:1px;transform:translateY(0)}
+.ll.n2{font-size:12px;color:rgba(255,255,255,.2);opacity:.7;margin-top:4px;transform:translateY(0)}
+.ll.hidden{opacity:0;font-size:0;height:0;margin:0;transform:translateY(8px);overflow:hidden}
+/* Mood-colored current line */
+.ll.c0.glow{color:var(--cx,#ffa0a0);text-shadow:var(--cs,0 0 18px rgba(255,80,80,.8)),0 0 50px rgba(255,80,80,.2)}
+.ll.n1.glow,.ll.p1.glow{color:var(--cx-dim,rgba(255,160,160,.5))}
+/* Beat pulse */
+@keyframes bpulse{0%{transform:scale(1)}40%{transform:scale(1.035)}100%{transform:scale(1)}}
+.ll.c0.beat{animation:bpulse .3s cubic-bezier(.34,1.56,.64,1)}
 
-    /* Recent songs */
-    #recent-wrap { width:100%; max-width:400px; }
-    #recent-label { font-size:10px; letter-spacing:4px; text-transform:uppercase; color:rgba(255,255,255,.2); margin-bottom:10px; }
-    #recent-list { display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto; }
-    #recent-list::-webkit-scrollbar { width:3px; }
-    #recent-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,.15); }
-    .recent-item {
-      display:flex; align-items:center; gap:12px; padding:9px 14px;
-      background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.08);
-      cursor:pointer; transition:all .25s; text-align:left;
-    }
-    .recent-item:hover { background:rgba(255,255,255,.1); border-color:rgba(255,255,255,.2); }
-    .recent-item-icon { font-size:16px; flex-shrink:0; }
-    .recent-item-info { overflow:hidden; }
-    .recent-item-name { font-size:13px; color:rgba(255,255,255,.75); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .recent-item-sub  { font-size:10px; color:rgba(255,255,255,.3); letter-spacing:2px; margin-top:2px; }
+/* ── Top bar ───────────────────────────────── */
+#topbar{position:fixed;top:0;left:0;right:0;z-index:20;display:none;align-items:center;justify-content:space-between;padding:14px 22px;background:linear-gradient(to bottom,rgba(0,0,0,.6),transparent)}
+#topbar.show{display:flex}
+#tl{display:flex;align-items:center;gap:12px;overflow:hidden;min-width:0}
+#mood-dot{width:8px;height:8px;border-radius:50%;background:var(--md,#8080ff);flex-shrink:0;transition:background 2s,box-shadow 2s;box-shadow:0 0 8px var(--md,#8080ff)}
+#track-title{font-size:13px;color:rgba(255,255,255,.5);letter-spacing:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50vw}
+#ctrl{display:flex;gap:8px;flex-shrink:0}
+.cbtn{padding:7px 15px;font:11px Georgia;letter-spacing:3px;text-transform:uppercase;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:rgba(255,255,255,.45);cursor:pointer;transition:all .25s}
+.cbtn:hover{background:rgba(255,255,255,.15);color:#fff}
+.cbtn.on{background:rgba(255,255,255,.16);color:#fff;border-color:rgba(255,255,255,.3)}
 
-    /* Drop highlight */
-    body.dropping #upload { border:2px solid rgba(150,150,255,.5); background:rgba(150,150,255,.05); }
-    body.dropping #upload-btn { border-color:rgba(150,200,255,.6); }
+/* Mood label */
+#mood-lbl{position:fixed;top:52px;left:22px;z-index:20;font-size:10px;letter-spacing:4px;text-transform:uppercase;color:rgba(255,255,255,.22);opacity:0;transition:opacity 1s;pointer-events:none}
+#mood-lbl.show{opacity:1}
 
-    /* ═══ ПОИСК ТЕКСТА ════════════════════════ */
-    #search-overlay {
-      position:fixed; inset:0; z-index:25;
-      display:none; align-items:center; justify-content:center;
-      background:rgba(4,4,15,.92); backdrop-filter:blur(14px);
-    }
-    #search-overlay.show { display:flex; }
+/* ── Waveform overview bar ─────────────────── */
+#wv-bar{position:fixed;top:0;left:0;right:0;z-index:12;height:36px;pointer-events:none;opacity:0;transition:opacity 1s}
+#wv-bar.show{opacity:1}
+#wv-canvas{display:block;width:100%;height:100%}
 
-    #search-card {
-      width:min(520px, 92vw); padding:36px 40px;
-      background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.1);
-    }
-    #search-card-top { display:flex; align-items:center; gap:16px; margin-bottom:24px; }
-    #search-card-icon { font-size:32px; }
-    #search-card-h { font-size:19px; color:#fff; font-weight:300; }
-    #search-card-sub { font-size:12px; color:rgba(255,255,255,.35); letter-spacing:2px; margin-top:3px; }
+/* ── Progress ──────────────────────────────── */
+#prog-wrap{position:fixed;bottom:0;left:0;right:0;z-index:11;height:3px;background:rgba(255,255,255,.06);cursor:pointer}
+#prog-fill{height:100%;width:0%;background:var(--pd,rgba(255,255,255,.4));pointer-events:none;transition:background 2s}
 
-    #search-notice {
-      font-size:12px; color:rgba(255,180,100,.6); letter-spacing:2px;
-      margin-bottom:18px; padding:10px 14px; background:rgba(255,140,50,.06);
-      border-left:2px solid rgba(255,180,100,.3); display:none;
-    }
-    #search-notice.show { display:block; }
+/* Status / fetch */
+#fetch-st{position:fixed;top:58px;left:50%;transform:translateX(-50%);z-index:22;font-size:11px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.4);pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .5s}
+#fetch-st.show{opacity:1}
+#sync-st{position:fixed;bottom:52px;left:50%;transform:translateX(-50%);z-index:22;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.28);pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .5s}
+#sync-st.show{opacity:1}
+@keyframes blink{0%,100%{opacity:.28}50%{opacity:.7}}
+#sync-st.active{opacity:1;animation:blink 1.4s ease-in-out infinite}
 
-    .s-field { position:relative; margin-bottom:10px; }
-    .s-label { font-size:10px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,.3); margin-bottom:6px; display:block; }
-    .s-input {
-      width:100%; padding:12px 16px; font:15px Georgia; color:#fff; letter-spacing:1px;
-      background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.15); outline:none;
-      transition:border-color .3s; -webkit-appearance:none; appearance:none; font-size:16px;
-    }
-    .s-input:focus { border-color:rgba(255,255,255,.5); background:rgba(255,255,255,.1); }
-    .s-input::placeholder { color:rgba(255,255,255,.2); font-size:14px; }
+/* No lyrics */
+#no-lrc{position:fixed;bottom:50px;right:20px;z-index:20;font-size:10px;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.22);cursor:pointer;transition:color .3s;display:none}
+#no-lrc:hover{color:rgba(255,255,255,.65)}
+#no-lrc.show{display:block}
 
-    #search-btns { display:flex; gap:10px; margin-top:18px; }
-    #search-btn {
-      flex:1; padding:13px; font:13px Georgia; letter-spacing:4px; text-transform:uppercase;
-      background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.3);
-      color:#fff; cursor:pointer; transition:all .25s;
-    }
-    #search-btn:hover { background:rgba(255,255,255,.22); }
-    #skip-btn {
-      padding:13px 20px; font:12px Georgia; letter-spacing:3px; text-transform:uppercase;
-      background:transparent; border:1px solid rgba(255,255,255,.1);
-      color:rgba(255,255,255,.35); cursor:pointer; transition:all .25s;
-    }
-    #skip-btn:hover { color:rgba(255,255,255,.7); border-color:rgba(255,255,255,.3); }
-    #search-status { font-size:11px; letter-spacing:3px; margin-top:14px; min-height:16px; color:rgba(150,255,150,.7); }
-    #search-status.err { color:rgba(255,120,100,.7); }
+/* Time */
+#time-d{position:fixed;bottom:9px;left:18px;z-index:20;font-size:11px;letter-spacing:2px;color:rgba(255,255,255,.2);display:none}
+#time-d.show{display:block}
 
-    /* Подсказки — популярные слова если ничего не найдено */
-    #search-tips { margin-top:14px; display:none; }
-    #search-tips.show { display:block; }
-    #search-tips-label { font-size:10px; color:rgba(255,255,255,.2); letter-spacing:3px; text-transform:uppercase; margin-bottom:8px; }
-    #search-tips-list { display:flex; flex-wrap:wrap; gap:6px; }
-    .tip-chip {
-      padding:5px 12px; font-size:11px; letter-spacing:2px;
-      background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
-      color:rgba(255,255,255,.45); cursor:pointer; transition:all .2s;
-    }
-    .tip-chip:hover { background:rgba(255,255,255,.14); color:#fff; }
-
-    /* ═══ ТЕКСТ ПЕСНИ ════════════════════════= */
-    #lyrics-wrap {
-      position:fixed; bottom:0; left:0; right:0; z-index:10;
-      display:none; flex-direction:column; align-items:center;
-      padding:0 16px 44px; pointer-events:none;
-    }
-    #lyrics-box {
-      max-width:820px; width:100%; text-align:center;
-      background:rgba(0,0,0,.5); border-radius:16px;
-      padding:18px 36px 20px; backdrop-filter:blur(10px);
-    }
-    .lline {
-      transition:opacity .4s, font-size .4s, color .4s, text-shadow .4s, transform .4s;
-      line-height:1.55; will-change:opacity,transform;
-      overflow:hidden; white-space:nowrap; text-overflow:ellipsis;
-    }
-    .lline.prev  { font-size:16px; color:rgba(255,255,255,.3); opacity:.8; margin-bottom:5px; }
-    .lline.cur   { font-size:25px; color:#fff; opacity:1; margin-bottom:5px;
-                   text-shadow:0 0 24px rgba(255,255,255,.4); }
-    .lline.nxt   { font-size:16px; color:rgba(255,255,255,.3); opacity:.8; }
-    .lline.hidden{ opacity:0; font-size:0; height:0; margin:0; transform:translateY(6px); overflow:hidden; }
-
-    /* Настроение-зависимые цвета для припева (меняются JS-ом) */
-    .lline.glow.cur { color:var(--chorus-color, #ffa0a0); text-shadow:var(--chorus-shadow, 0 0 16px rgba(255,80,80,.75)); }
-    .lline.glow.nxt { color:var(--chorus-color-dim, rgba(255,160,160,.4)); }
-
-    /* ═══ ВЕРХНЯЯ ПАНЕЛЬ ═════════════════════= */
-    #topbar {
-      position:fixed; top:0; left:0; right:0; z-index:20;
-      display:none; align-items:center; justify-content:space-between;
-      padding:14px 20px; background:linear-gradient(to bottom,rgba(0,0,0,.55),transparent);
-    }
-    #topbar.show { display:flex; }
-    #topbar-left { display:flex; align-items:center; gap:12px; overflow:hidden; }
-    #mood-dot { width:8px; height:8px; border-radius:50%; background:var(--mood-color,#8080ff); flex-shrink:0; transition:background 2s; }
-    #track-title { font-size:13px; color:rgba(255,255,255,.55); letter-spacing:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:50vw; }
-    #ctrl { display:flex; gap:8px; }
-    .cbtn {
-      padding:7px 15px; font:11px Georgia; letter-spacing:3px; text-transform:uppercase;
-      background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.14);
-      color:rgba(255,255,255,.5); cursor:pointer; transition:all .25s;
-    }
-    .cbtn:hover { background:rgba(255,255,255,.16); color:#fff; }
-    .cbtn.active { background:rgba(255,255,255,.17); color:#fff; border-color:rgba(255,255,255,.3); }
-
-    /* Индикатор настроения */
-    #mood-label {
-      position:fixed; top:50px; left:20px; z-index:20;
-      font-size:10px; letter-spacing:4px; text-transform:uppercase;
-      color:rgba(255,255,255,.2); opacity:0; transition:opacity 1s;
-      pointer-events:none;
-    }
-    #mood-label.show { opacity:1; }
-
-    /* ═══ ПРОГРЕСС ═══════════════════════════= */
-    #progress-wrap {
-      position:fixed; bottom:0; left:0; right:0; z-index:11;
-      height:4px; background:rgba(255,255,255,.07); cursor:pointer;
-    }
-    #progress-fill { height:100%; width:0%; background:rgba(255,255,255,.4); pointer-events:none; transition:background 2s; }
-
-    #time-display {
-      position:fixed; bottom:10px; left:18px; z-index:20;
-      font-size:11px; letter-spacing:2px; color:rgba(255,255,255,.22);
-      display:none;
-    }
-    #time-display.show { display:block; }
-
-    /* ═══ СТАТУС ПОИСКА ═════════════════════= */
-    #fetch-status {
-      position:fixed; top:56px; left:50%; transform:translateX(-50%);
-      z-index:20; font-size:11px; letter-spacing:3px; text-transform:uppercase;
-      color:rgba(255,255,255,.4); pointer-events:none; white-space:nowrap;
-      opacity:0; transition:opacity .5s;
-    }
-    #fetch-status.show { opacity:1; }
-
-    #no-lyrics {
-      position:fixed; bottom:50px; right:18px; z-index:20;
-      font-size:10px; letter-spacing:3px; text-transform:uppercase;
-      color:rgba(255,255,255,.25); cursor:pointer; transition:color .3s; display:none;
-    }
-    #no-lyrics:hover { color:rgba(255,255,255,.65); }
-    #no-lyrics.show { display:block; }
-
-    /* ═══ ИНДИКАТОР СИНХРОНИЗАЦИИ ═══════════= */
-    #sync-status {
-      position:fixed; bottom:50px; left:50%; transform:translateX(-50%);
-      z-index:22; font-size:10px; letter-spacing:3px; text-transform:uppercase;
-      color:rgba(255,255,255,.3); white-space:nowrap; pointer-events:none;
-      opacity:0; transition:opacity .5s;
-    }
-    #sync-status.show { opacity:1; }
-    @keyframes sync-pulse { 0%,100%{opacity:.3} 50%{opacity:.8} }
-    #sync-status.active { animation:sync-pulse 1.4s ease-in-out infinite; }
-
-    /* ═══ МОБИЛКА ════════════════════════════= */
-    @media (max-width:600px) {
-      #upload-h1 { font-size:22px; }
-      #upload-logo { font-size:52px; }
-      #upload-btn { padding:12px 28px; font-size:13px; }
-      #search-card { padding:24px 20px; }
-      .lline.prev { font-size:13px; }
-      .lline.cur  { font-size:19px; }
-      .lline.nxt  { font-size:13px; }
-      #lyrics-box { padding:12px 14px 14px; }
-      #progress-wrap { height:6px; }
-      .cbtn { padding:6px 10px; font-size:10px; letter-spacing:2px; }
-      #search-btns { flex-direction:column; }
-    }
-  </style>
+/* Mobile */
+@media(max-width:600px){
+  #upload-h1{font-size:22px}#upload-icon{font-size:52px}
+  #upload-btn{padding:12px 28px;font-size:13px}
+  #search-card{padding:22px 18px}
+  #s-btns{flex-direction:column}
+  .ll.p2,.ll.n2{display:none}
+  .ll.p1,.ll.n1{font-size:14px}
+  .ll.c0{font-size:20px}
+  #lyrics-box{padding:12px 14px 14px}
+  #prog-wrap{height:5px}
+  .cbtn{padding:5px 10px;font-size:10px;letter-spacing:2px}
+}
+</style>
 </head>
 <body>
 
-<canvas id="main"></canvas>
-<canvas id="bloom"></canvas>
+<canvas id="c-bg"></canvas>
+<canvas id="c-fx"></canvas>
+<canvas id="c-bloom"></canvas>
 
-<!-- ── Загрузка ────────────────────────────── -->
+<!-- Waveform overview -->
+<div id="wv-bar"><canvas id="wv-canvas"></canvas></div>
+
+<!-- Upload -->
 <div id="upload">
   <div id="upload-card">
-    <div id="upload-logo">🎵</div>
+    <div id="upload-icon">🎵</div>
     <h1 id="upload-h1">Music Player</h1>
     <p  id="upload-p">Загрузи любую песню — текст найдётся автоматически</p>
-    <div id="upload-btn-wrap">
-      <label id="upload-btn">
-        <span>📂 Выбрать файл</span>
-        <input type="file" id="file-input" accept="audio/*">
-      </label>
-    </div>
-    <div id="upload-drag-hint">или перетащи файл сюда</div>
+    <label id="upload-btn"><span>📂 Выбрать файл</span><input type="file" id="file-input" accept="audio/*"></label>
+    <div id="upload-drag">или перетащи файл сюда</div>
     <div id="recent-wrap" style="display:none">
       <div id="recent-label">Недавние</div>
       <div id="recent-list"></div>
@@ -261,884 +184,954 @@
   </div>
 </div>
 
-<!-- ── Поиск текста ────────────────────────── -->
+<!-- Search -->
 <div id="search-overlay">
   <div id="search-card">
-    <div id="search-card-top">
-      <div id="search-card-icon">🔍</div>
-      <div>
-        <div id="search-card-h">Текст не найден</div>
-        <div id="search-card-sub"></div>
-      </div>
-    </div>
-    <div id="search-notice"></div>
-    <div class="s-field">
-      <label class="s-label" for="inp-artist">Исполнитель</label>
-      <input class="s-input" id="inp-artist" placeholder="Artemas" autocomplete="off">
-    </div>
-    <div class="s-field">
-      <label class="s-label" for="inp-title">Название песни</label>
-      <input class="s-input" id="inp-title" placeholder="I Like The Way You Kiss Me" autocomplete="off">
-    </div>
-    <div id="search-btns">
-      <button id="search-btn">Найти текст</button>
-      <button id="skip-btn">Без текста</button>
-    </div>
-    <div id="search-status"></div>
-    <div id="search-tips">
-      <div id="search-tips-label">Попробуй убрать:</div>
-      <div id="search-tips-list"></div>
-    </div>
+    <div id="sc-top"><div id="sc-icon">🔍</div><div><div id="sc-h">Текст не найден</div><div id="sc-sub"></div></div></div>
+    <div id="sc-notice"></div>
+    <div class="s-field"><label class="s-label" for="inp-a">Исполнитель</label><input class="s-input" id="inp-a" placeholder="Artist" autocomplete="off"></div>
+    <div class="s-field"><label class="s-label" for="inp-t">Название</label><input class="s-input" id="inp-t" placeholder="Track name" autocomplete="off"></div>
+    <div id="s-btns"><button id="search-btn">Найти текст</button><button id="skip-btn">Без текста</button></div>
+    <div id="s-status"></div>
+    <div id="s-tips"><div id="s-tips-label">Попробуй без суффикса:</div><div id="s-tips-list"></div></div>
   </div>
 </div>
 
-<!-- ── Текст ────────────────────────────────── -->
+<!-- Lyrics: p2 p1 CUR n1 n2 -->
 <div id="lyrics-wrap">
   <div id="lyrics-box">
-    <div class="lline hidden" id="lline-prev"></div>
-    <div class="lline hidden" id="lline-cur"></div>
-    <div class="lline hidden" id="lline-nxt"></div>
+    <div class="ll hidden" id="ll-p2"></div>
+    <div class="ll hidden" id="ll-p1"></div>
+    <div class="ll hidden" id="ll-c0"></div>
+    <div class="ll hidden" id="ll-n1"></div>
+    <div class="ll hidden" id="ll-n2"></div>
   </div>
 </div>
 
-<div id="fetch-status"></div>
-<div id="no-lyrics" onclick="openSearch()">🔍 Найти текст</div>
+<div id="fetch-st"></div>
+<div id="sync-st"></div>
+<div id="no-lrc" onclick="openSearch()">🔍 Найти текст</div>
 
-<!-- ── Статус автосинхронизации ───────────── -->
-<div id="sync-status"></div>
-
-<!-- ── Топбар ────────────────────────────────── -->
+<!-- Top bar -->
 <div id="topbar">
-  <div id="topbar-left">
-    <div id="mood-dot"></div>
-    <div id="track-title"></div>
-  </div>
+  <div id="tl"><div id="mood-dot"></div><div id="track-title"></div></div>
   <div id="ctrl">
     <button class="cbtn" id="btn-pause">⏸ Пауза</button>
     <button class="cbtn" id="btn-lyrics">📝 Текст</button>
     <button class="cbtn" id="btn-new">📂 Новый</button>
   </div>
 </div>
-<div id="mood-label"></div>
+<div id="mood-lbl"></div>
 
-<div id="progress-wrap"><div id="progress-fill"></div></div>
-<div id="time-display"></div>
+<div id="prog-wrap"><div id="prog-fill"></div></div>
+<div id="time-d"></div>
 <audio id="song"></audio>
 
 <script>
 'use strict';
-// ════════════════════════════════════════════
-//  CANVAS
-// ════════════════════════════════════════════
-const MC = document.getElementById('main'),  mc = MC.getContext('2d');
-const BC = document.getElementById('bloom'), bc = BC.getContext('2d');
-const OC = document.createElement('canvas'), oc = OC.getContext('2d'); // offscreen bloom
-let W, H, CX, CY;
-function resize() {
-  W = MC.width = BC.width = innerWidth;
-  H = MC.height = BC.height = innerHeight;
-  OC.width = W >> 2; OC.height = H >> 2;
-  CX = W/2; CY = H/2;
-}
-resize(); addEventListener('resize', resize);
 
-// ════════════════════════════════════════════
-//  НАСТРОЕНИЕ / MOOD
-// ════════════════════════════════════════════
-const MOODS = {
-  neutral:  { hue:220, hueSpread:200, sat:65,  rot:0.0015, parts:1.0, bloom:0.55, trail:0.18, dot:'#8888ff', prog:'rgba(255,255,255,.4)',  chorus:'#ffa0a0', chorusShadow:'0 0 16px rgba(255,80,80,.75)'  },
-  sad:      { hue:225, hueSpread:60,  sat:52,  rot:0.0007, parts:0.3, bloom:0.65, trail:0.10, dot:'#6688cc', prog:'rgba(100,160,255,.5)',  chorus:'#aac0ff', chorusShadow:'0 0 16px rgba(80,120,255,.75)' },
-  happy:    { hue:32,  hueSpread:180, sat:92,  rot:0.0028, parts:2.0, bloom:0.6,  trail:0.22, dot:'#ffaa44', prog:'rgba(255,180,80,.5)',   chorus:'#ffe080', chorusShadow:'0 0 16px rgba(255,200,50,.8)'  },
-  chill:    { hue:162, hueSpread:90,  sat:60,  rot:0.0011, parts:0.6, bloom:0.45, trail:0.13, dot:'#44ddaa', prog:'rgba(80,220,180,.45)',  chorus:'#88ffdd', chorusShadow:'0 0 16px rgba(50,220,170,.7)'  },
-  energetic:{ hue:295, hueSpread:360, sat:97,  rot:0.0045, parts:2.5, bloom:0.72, trail:0.26, dot:'#ff44cc', prog:'rgba(255,80,200,.5)',   chorus:'#ff88ff', chorusShadow:'0 0 18px rgba(255,80,220,.85)' },
-  romantic: { hue:340, hueSpread:80,  sat:75,  rot:0.001,  parts:0.8, bloom:0.6,  trail:0.15, dot:'#ff6688', prog:'rgba(255,120,160,.45)', chorus:'#ffaacc', chorusShadow:'0 0 16px rgba(255,80,140,.75)' },
+// ═══════════════════════════════════════════════════════
+//  CANVAS SETUP
+// ═══════════════════════════════════════════════════════
+const CBG = document.getElementById('c-bg'),   bg = CBG.getContext('2d');
+const CFX = document.getElementById('c-fx'),   fx = CFX.getContext('2d');
+const CBL = document.getElementById('c-bloom'),bl = CBL.getContext('2d');
+const COF = document.createElement('canvas'),  of = COF.getContext('2d');
+const WVC = document.getElementById('wv-canvas');
+let W,H,CX,CY;
+
+function resize(){
+  W=CBG.width=CFX.width=CBL.width=innerWidth;
+  H=CBG.height=CFX.height=CBL.height=innerHeight;
+  COF.width=W>>2; COF.height=H>>2;
+  WVC.width=WVC.parentElement.offsetWidth;
+  WVC.height=WVC.parentElement.offsetHeight;
+  CX=W/2; CY=H/2;
+  drawWaveformBar();
+}
+resize(); addEventListener('resize',resize);
+
+// ═══════════════════════════════════════════════════════
+//  MOOD SYSTEM
+// ═══════════════════════════════════════════════════════
+const MOODS={
+  neutral:  {hue:225,sp:200,sat:62,rot:.0015,pm:1.0, bop:.52,tr:.16,dot:'#7777ff',pd:'rgba(180,180,255,.45)',cx:'#ffa0a0',cs:'0 0 18px rgba(255,80,80,.8)'},
+  sad:      {hue:222,sp:55, sat:50,rot:.0007,pm:.28,bop:.62,tr:.09,dot:'#5577cc',pd:'rgba(100,150,255,.5)', cx:'#aac0ff',cs:'0 0 18px rgba(80,120,255,.8)'},
+  happy:    {hue:32, sp:185,sat:92,rot:.0028,pm:2.0, bop:.58,tr:.22,dot:'#ffaa44',pd:'rgba(255,180,80,.5)', cx:'#ffe090',cs:'0 0 18px rgba(255,200,50,.85)'},
+  chill:    {hue:163,sp:85, sat:60,rot:.001, pm:.6, bop:.45,tr:.12,dot:'#44ddaa',pd:'rgba(80,220,180,.45)',cx:'#88ffdd',cs:'0 0 18px rgba(50,220,170,.75)'},
+  energetic:{hue:295,sp:360,sat:97,rot:.0048,pm:2.6, bop:.72,tr:.26,dot:'#ff44cc',pd:'rgba(255,80,200,.5)', cx:'#ff88ff',cs:'0 0 20px rgba(255,60,220,.9)'},
+  romantic: {hue:338,sp:75, sat:72,rot:.001, pm:.8, bop:.58,tr:.14,dot:'#ff6688',pd:'rgba(255,110,160,.45)',cx:'#ffaac8',cs:'0 0 18px rgba(255,80,140,.8)'},
 };
+const MOOD_KEYS=['hue','sp','sat','rot','pm','bop','tr'];
+let moodN='neutral',moodC={...MOODS.neutral},moodT={...MOODS.neutral};
 
-let moodName   = 'neutral';
-let moodCur    = { ...MOODS.neutral };
-let moodTarget = { ...MOODS.neutral };
-const MOOD_KEYS = ['hue','hueSpread','sat','rot','parts','bloom','trail'];
-
-function setMood(name, fast = false) {
-  if (moodName === name) return;
-  moodName = name;
-  moodTarget = { ...MOODS[name] };
-  const el = document.getElementById('mood-dot');
-  el.style.setProperty('--mood-color', MOODS[name].dot);
-  el.style.background = MOODS[name].dot;
-  document.getElementById('progress-fill').style.background = MOODS[name].prog;
-  const root = document.documentElement;
-  root.style.setProperty('--chorus-color',     MOODS[name].chorus);
-  root.style.setProperty('--chorus-shadow',    MOODS[name].chorusShadow);
-  root.style.setProperty('--chorus-color-dim', MOODS[name].chorus + '66');
-  if (fast) Object.assign(moodCur, moodTarget);
-  // Показать лейбл настроения
-  const lbl = { neutral:'🎵 нейтральный', sad:'💙 грустный', happy:'😊 радостный', chill:'🌊 чилл', energetic:'⚡ энергичный', romantic:'❤️ романтичный' };
-  const ml = document.getElementById('mood-label');
-  ml.textContent = lbl[name] || '';
-  ml.classList.add('show');
-  clearTimeout(ml._t);
-  ml._t = setTimeout(() => ml.classList.remove('show'), 3000);
+function setMood(name,fast=false){
+  if(!(name in MOODS)) name='neutral';
+  if(moodN===name&&!fast) return;
+  moodN=name; moodT={...MOODS[name]};
+  if(fast) Object.assign(moodC,moodT);
+  const m=MOODS[name];
+  const r=document.documentElement;
+  r.style.setProperty('--md',m.dot);
+  r.style.setProperty('--pd',m.pd);
+  r.style.setProperty('--cx',m.cx);
+  r.style.setProperty('--cs',m.cs);
+  r.style.setProperty('--cx-dim',m.cx+'88');
+  document.getElementById('mood-dot').style.cssText=`background:${m.dot};box-shadow:0 0 10px ${m.dot}`;
+  document.getElementById('prog-fill').style.background=m.pd;
+  const LBL={neutral:'🎵 нейтральный',sad:'💙 грустный',happy:'😊 радостный',chill:'🌊 чилл',energetic:'⚡ энергичный',romantic:'❤️ романтичный'};
+  const ml=document.getElementById('mood-lbl');
+  ml.textContent=LBL[name]||''; ml.classList.add('show');
+  clearTimeout(ml._t); ml._t=setTimeout(()=>ml.classList.remove('show'),2800);
 }
 
-function lerpMood(speed = 0.012) {
-  for (const k of MOOD_KEYS) moodCur[k] += (moodTarget[k] - moodCur[k]) * speed;
-}
+function lerpM(spd=0.013){for(const k of MOOD_KEYS) moodC[k]+=(moodT[k]-moodC[k])*spd;}
 
-// Определить настроение по словам в строке
-function moodFromText(text = '') {
-  const t = text.toLowerCase();
-  const hits = name => {
-    const w = { neutral:[], sad:['sad','slow','blue','cry','tear','alone','broken','pain','hurt','lost','dark','cold','empty','numb','mourn'],
-      happy:['happy','fun','smile','laugh','dance','party','joy','bright','hype','lit','fire','good time','summer'],
-      chill:['chill','lofi','lo-fi','relax','calm','sleep','ambient','soft','gentle','mellow','smooth','drift','float'],
-      energetic:['remix','edit','club','edm','rave','drill','trap','bass drop','banger','wild','jump','hype'],
-      romantic:['love','heart','kiss','romantic','tender','darling','baby','forever','hold me','close'] }[name];
-    return w.reduce((n,word) => n + (t.split(word).length-1), 0);
+function moodFromText(t=''){
+  t=t.toLowerCase();
+  const check=(words)=>words.reduce((n,w)=>n+(t.split(w).length-1),0);
+  const sc={
+    sad:  check(['sad','slow','blue','cry','tear','alone','broken','pain','hurt','lost','dark','cold','empty','numb']),
+    happy:check(['happy','fun','smile','laugh','dance','party','joy','bright','fire','hype','amazing','summer']),
+    chill:check(['chill','lofi','lo-fi','relax','calm','sleep','soft','gentle','mellow','smooth','ambient']),
+    energetic:check(['remix','club','edm','rave','drill','trap','bass','banger','wild','jump','festival']),
+    romantic:check(['love','heart','kiss','romantic','tender','darling','baby','forever','hold','close']),
   };
-  const scores = Object.keys(MOODS).filter(k=>k!=='neutral').map(k => [k, hits(k)]);
-  const best = scores.sort((a,b)=>b[1]-a[1])[0];
-  return best[1] > 0 ? best[0] : 'neutral';
+  const best=Object.entries(sc).sort((a,b)=>b[1]-a[1]);
+  return best[0][1]>0?best[0][0]:'neutral';
 }
 
-// ════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
 //  AUDIO ENGINE
-// ════════════════════════════════════════════
-const song = document.getElementById('song');
-let audioCtx = null, analyser = null, srcNode = null;
-let freqD = null, waveD = null;
-let currentBlobUrl = null;
+// ═══════════════════════════════════════════════════════
+const song=document.getElementById('song');
+let ctx=null,analyser=null,srcNode=null,freqD=null,waveD=null,currentBlobUrl=null,currentFile=null;
 
-function ensureAudioGraph() {
-  if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 2048;
-  analyser.smoothingTimeConstant = 0.82;
-  freqD = new Uint8Array(analyser.frequencyBinCount);
-  waveD = new Uint8Array(analyser.fftSize);
-  srcNode = audioCtx.createMediaElementSource(song);
-  srcNode.connect(analyser);
-  analyser.connect(audioCtx.destination);
+function ensureGraph(){
+  if(ctx) return;
+  ctx=new(window.AudioContext||window.webkitAudioContext)();
+  analyser=ctx.createAnalyser();
+  analyser.fftSize=2048; analyser.smoothingTimeConstant=0.82;
+  freqD=new Uint8Array(analyser.frequencyBinCount);
+  waveD=new Uint8Array(analyser.fftSize);
+  srcNode=ctx.createMediaElementSource(song);
+  srcNode.connect(analyser); analyser.connect(ctx.destination);
+}
+function setupAudio(url){
+  if(currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+  currentBlobUrl=url; ensureGraph();
+  if(ctx.state==='suspended') ctx.resume();
+  song.src=url; song.play().catch(()=>{});
+}
+song.addEventListener('ended',()=>document.getElementById('btn-pause').textContent='▶ Играть');
+
+function getBand(lo,hi){
+  if(!analyser) return 0;
+  const bins=analyser.frequencyBinCount,nyq=ctx.sampleRate/2;
+  let sum=0,n=0,s=Math.floor(lo/nyq*bins),e=Math.ceil(hi/nyq*bins);
+  for(let i=s;i<e;i++){sum+=freqD[i];n++;}
+  return n?sum/(n*255):0;
 }
 
-function setupAudio(blobUrl) {
-  if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-  currentBlobUrl = blobUrl;
-  ensureAudioGraph();
-  if (audioCtx.state === 'suspended') audioCtx.resume();
-  song.src = blobUrl;
-  song.play().catch(() => {});
-}
-
-song.addEventListener('ended', () => {
-  document.getElementById('btn-pause').textContent = '▶ Играть';
-});
-
-function getBand(lo, hi) {
-  if (!analyser) return 0;
-  const bins = analyser.frequencyBinCount, nyq = audioCtx.sampleRate / 2;
-  let sum = 0, n = 0;
-  const s = Math.floor(lo/nyq*bins), e = Math.ceil(hi/nyq*bins);
-  for (let i = s; i < e; i++) { sum += freqD[i]; n++; }
-  return n ? sum / (n * 255) : 0;
-}
-
-// Beat detection + BPM estimation
-const BBUF = new Float32Array(55); let bPtr = 0;
-const beatTimes = []; let estimatedBPM = 0;
-function processBeat(bass) {
-  BBUF[bPtr++ % 55] = bass;
-  const avg = BBUF.reduce((a,b)=>a+b) / 55;
-  const isBeat = bass > avg*1.38 && bass > 0.18;
-  if (isBeat) {
-    const now = performance.now();
-    beatTimes.push(now);
-    if (beatTimes.length > 10) beatTimes.shift();
-    if (beatTimes.length >= 4) {
-      const diffs = []; for (let i=1;i<beatTimes.length;i++) diffs.push(beatTimes[i]-beatTimes[i-1]);
-      const avg2 = diffs.reduce((a,b)=>a+b)/diffs.length;
-      estimatedBPM = 60000 / avg2;
+const BBUF=new Float32Array(55);let bPtr=0,beatTimes=[],bpmEst=0,beatStr=0;
+function processBeat(bass){
+  BBUF[bPtr++%55]=bass;
+  const avg=BBUF.reduce((a,b)=>a+b)/55;
+  const hit=bass>avg*1.38&&bass>0.18;
+  if(hit){
+    const now=performance.now(); beatTimes.push(now);
+    if(beatTimes.length>10) beatTimes.shift();
+    if(beatTimes.length>=4){
+      const diffs=[]; for(let i=1;i<beatTimes.length;i++) diffs.push(beatTimes[i]-beatTimes[i-1]);
+      bpmEst=60000/(diffs.reduce((a,b)=>a+b)/diffs.length);
     }
   }
-  return isBeat;
+  return hit;
 }
 
-// ════════════════════════════════════════════
-//  ВИЗУАЛИЗАТОР
-// ════════════════════════════════════════════
-let vHue = 220, vEnergy = 0, vRot = 0;
-const parts = [];
+// ═══════════════════════════════════════════════════════
+//  BACKGROUND LAYER — Stars + Nebulae
+// ═══════════════════════════════════════════════════════
+let T=0;
+const STARS=Array.from({length:180},()=>({
+  x:Math.random(),y:Math.random(),
+  r:.25+Math.random()*1.2,
+  ph:Math.random()*Math.PI*2,sp:.006+Math.random()*.025,
+  bright:Math.random()<.08
+}));
 
-class Part {
-  constructor(x, y, energy) {
-    const a = Math.random()*Math.PI*2;
-    const v = (1+Math.random()*3.5)*(0.5+energy*2.5);
-    this.x=x; this.y=y; this.vx=Math.cos(a)*v; this.vy=Math.sin(a)*v;
-    this.life=1; this.decay=0.008+Math.random()*0.013;
-    this.hue=vHue+(Math.random()-.5)*60; this.r=1+Math.random()*3.5*energy;
-    this.glow=Math.random()>.5;
-  }
-  update() { this.x+=this.vx; this.y+=this.vy; this.vx*=.97; this.vy*=.97; this.life-=this.decay; }
-  draw() {
-    if (this.life<=0) return;
-    mc.save(); mc.globalAlpha=this.life*.9;
-    if (this.glow) { mc.shadowColor=`hsl(${this.hue},100%,70%)`; mc.shadowBlur=8; }
-    mc.fillStyle=`hsl(${this.hue},88%,65%)`;
-    mc.beginPath(); mc.arc(this.x,this.y,this.r,0,Math.PI*2); mc.fill();
-    mc.restore();
+function drawStars(energy){
+  for(const s of STARS){
+    s.ph+=s.sp;
+    const a=s.bright?.15+.55*(0.5+0.5*Math.sin(s.ph)):.05+.2*(0.5+0.5*Math.sin(s.ph));
+    const r=s.r*(1+energy*(s.bright?.8:.3)*Math.abs(Math.sin(s.ph)));
+    bg.beginPath();
+    bg.arc(s.x*W,s.y*H,r,0,Math.PI*2);
+    bg.fillStyle=s.bright?`rgba(255,255,255,${a})`:`rgba(200,210,255,${a})`;
+    bg.fill();
   }
 }
 
-function vizFrame(bass, mid, high, energy, beat) {
-  lerpMood();
-  vRot += (moodCur.rot + energy*0.003);
+const NEBS=Array.from({length:7},()=>({
+  x:.1+Math.random()*.8,y:.1+Math.random()*.8,
+  rx:.12+Math.random()*.22,ry:.1+Math.random()*.18,
+  ho:(Math.random()-.5)*55,
+  sp:(Math.random()-.5)*.00008,ph:Math.random()*Math.PI*2
+}));
 
-  // Фон с трейлом
-  mc.fillStyle = `rgba(7,7,26,${moodCur.trail+(1-energy)*.06})`;
-  mc.fillRect(0,0,W,H);
-
-  // Аврора — цвет из настроения
-  const rg = mc.createRadialGradient(CX,CY,0,CX,CY,Math.max(W,H)*.72);
-  const s = moodCur.sat+energy*18, l1 = 8+energy*16, l2 = 5+energy*8;
-  rg.addColorStop(0,   `hsla(${vHue},${s}%,${l1}%,${.3+energy*.22})`);
-  rg.addColorStop(.45, `hsla(${vHue+55},${s*.85}%,${l2}%,0.12)`);
-  rg.addColorStop(1,   'transparent');
-  mc.fillStyle=rg; mc.fillRect(0,0,W,H);
-
-  const R = Math.min(W,H)*.17 + bass*Math.min(W,H)*.07;
-
-  // Спектр-кольцо
-  mc.save(); mc.translate(CX,CY); mc.rotate(vRot);
-  for (let i=0;i<150;i++) {
-    const idx = Math.floor(i/150*freqD.length*.65);
-    const val = freqD[idx]/255;
-    if (val<.02) continue;
-    const angle = (i/150)*Math.PI*2;
-    const len   = val*Math.min(W,H)*.22;
-    const h     = vHue+(i/150)*moodCur.hueSpread;
-    mc.save();
-    mc.shadowColor=`hsla(${h},100%,70%,.6)`; mc.shadowBlur=6*val;
-    mc.strokeStyle=`hsla(${h},88%,65%,${.3+val*.7})`; mc.lineWidth=1.5+val*2.5; mc.lineCap='round';
-    mc.beginPath();
-    mc.moveTo(Math.cos(angle)*R, Math.sin(angle)*R);
-    mc.lineTo(Math.cos(angle)*(R+len), Math.sin(angle)*(R+len));
-    mc.stroke(); mc.restore();
+function drawNebulae(energy){
+  for(const n of NEBS){
+    n.ph+=n.sp;
+    const cx=(n.x+Math.sin(n.ph*.7)*.04)*W;
+    const cy=(n.y+Math.cos(n.ph*.5)*.03)*H;
+    const rx=n.rx*Math.min(W,H)*(1+energy*.25);
+    const ry=n.ry*Math.min(W,H)*(1+energy*.18);
+    const h=moodC.hue+n.ho;
+    const g=bg.createRadialGradient(cx,cy,0,cx,cy,Math.max(rx,ry));
+    g.addColorStop(0,`hsla(${h},${moodC.sat+10}%,25%,${.07+energy*.04})`);
+    g.addColorStop(.55,`hsla(${h+25},${moodC.sat}%,18%,.035)`);
+    g.addColorStop(1,'transparent');
+    bg.save(); bg.scale(1,ry/rx);
+    bg.beginPath(); bg.arc(cx,cy*rx/ry,rx,0,Math.PI*2);
+    bg.fillStyle=g; bg.fill(); bg.restore();
   }
-  mc.restore();
+}
 
-  // Центральный пульс
-  mc.save();
-  mc.shadowColor=`hsla(${vHue},100%,75%,.85)`; mc.shadowBlur=22+bass*55;
-  const cg=mc.createRadialGradient(CX,CY,0,CX,CY,R);
-  cg.addColorStop(0,`hsla(${vHue},90%,82%,${.06+bass*.28})`);
+// ═══════════════════════════════════════════════════════
+//  AURORA RIBBONS
+// ═══════════════════════════════════════════════════════
+const AURORA_BANDS=[
+  {yf:.22,amp:55,sp:.28,ph:0.0,hoOff:0},
+  {yf:.36,amp:45,sp:.18,ph:2.1,hoOff:35},
+  {yf:.50,amp:40,sp:.22,ph:4.3,hoOff:-25},
+  {yf:.65,amp:35,sp:.14,ph:1.7,hoOff:55},
+];
+
+function drawAurora(energy,beat){
+  const boost=(beat?18:0)+energy*60;
+  for(const b of AURORA_BANDS){
+    const baseY=b.yf*H;
+    const amp=b.amp+boost*(1-b.yf*.5);
+    const h=moodC.hue+b.hoOff;
+    const pts=120;
+    bg.beginPath();
+    for(let i=0;i<=pts;i++){
+      const t=i/pts;
+      const x=t*W;
+      const nx=t*6.5+T*b.sp;
+      const ny=b.ph;
+      // Layered sine waves for organic feel
+      const y=baseY
+        +Math.sin(nx*1.2+ny)*amp*.55
+        +Math.sin(nx*2.1-ny*.7)*amp*.28
+        +Math.sin(nx*3.8+ny*.4)*amp*.17;
+      i===0?bg.moveTo(x,y):bg.lineTo(x,y);
+    }
+    bg.lineTo(W,H*1.3); bg.lineTo(0,H*1.3); bg.closePath();
+    const alpha=.055+energy*.1;
+    const grd=bg.createLinearGradient(0,baseY-amp,0,baseY+amp*1.8);
+    grd.addColorStop(0,'transparent');
+    grd.addColorStop(.3,`hsla(${h},${moodC.sat+15}%,60%,${alpha})`);
+    grd.addColorStop(.65,`hsla(${h+20},${moodC.sat+10}%,50%,${alpha*.55})`);
+    grd.addColorStop(1,'transparent');
+    bg.fillStyle=grd; bg.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  PARTICLES
+// ═══════════════════════════════════════════════════════
+const parts=[];
+
+class Particle{
+  constructor(x,y,en,type='spark'){
+    this.type=type;
+    const a=Math.random()*Math.PI*2;
+    const spd=type==='orb'?(1+Math.random()*2)*(0.4+en):((1+Math.random()*4)*(0.5+en*2.5));
+    this.x=x; this.y=y; this.vx=Math.cos(a)*spd; this.vy=Math.sin(a)*spd;
+    this.life=1; this.decay=type==='orb'?.005+Math.random()*.007:.008+Math.random()*.014;
+    this.hue=moodC.hue+(Math.random()-.5)*moodC.sp*.5;
+    this.r=type==='orb'?2+Math.random()*4:1+Math.random()*3*en;
+    this.glow=Math.random()>.45;
+    this.gravity=type==='orb'?-.02:.0;
+  }
+  update(){
+    this.x+=this.vx; this.y+=this.vy;
+    this.vx*=.97; this.vy=this.vy*.97+this.gravity;
+    this.life-=this.decay;
+  }
+  draw(){
+    if(this.life<=0) return;
+    fx.save(); fx.globalAlpha=this.life*(this.type==='orb'?.75:.9);
+    if(this.glow){fx.shadowColor=`hsl(${this.hue},100%,70%)`; fx.shadowBlur=this.type==='orb'?16:8;}
+    fx.fillStyle=`hsl(${this.hue},88%,68%)`;
+    fx.beginPath(); fx.arc(this.x,this.y,this.r,0,Math.PI*2); fx.fill();
+    fx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  RIPPLES
+// ═══════════════════════════════════════════════════════
+const ripples=[];
+class Ripple{
+  constructor(x,y,hue,maxR){
+    this.x=x;this.y=y;this.r=8;this.maxR=maxR||Math.min(W,H)*.42;
+    this.life=1;this.hue=hue;this.spd=5+Math.random()*4;
+  }
+  update(){this.r+=this.spd;this.spd*=1.015;this.life=Math.max(0,1-this.r/this.maxR);}
+  draw(){
+    if(this.life<=0) return;
+    fx.beginPath(); fx.arc(this.x,this.y,this.r,0,Math.PI*2);
+    fx.strokeStyle=`hsla(${this.hue},90%,70%,${this.life*.3})`;
+    fx.lineWidth=2.5*this.life;
+    fx.shadowColor=`hsla(${this.hue},100%,70%,.6)`; fx.shadowBlur=14*this.life;
+    fx.stroke();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  TENDRILS (energy lines on heavy beats)
+// ═══════════════════════════════════════════════════════
+const tendrils=[];
+class Tendril{
+  constructor(angle,energy,R){
+    this.a=angle; this.curve=(Math.random()-.5)*.1;
+    this.len=0; this.maxLen=70+energy*130;
+    this.spd=7+energy*10; this.life=1; this.decay=.03+Math.random()*.025;
+    this.hue=moodC.hue+(Math.random()-.5)*50; this.w=1+energy*2.5;
+    this.R=R*.88;
+  }
+  update(){this.len=Math.min(this.len+this.spd,this.maxLen);this.a+=this.curve;this.life-=this.decay;}
+  draw(){
+    if(this.life<=0) return;
+    const sx=CX+Math.cos(this.a)*this.R, sy=CY+Math.sin(this.a)*this.R;
+    const ex=CX+Math.cos(this.a)*(this.R+this.len), ey=CY+Math.sin(this.a)*(this.R+this.len);
+    fx.save(); fx.globalAlpha=this.life*.7;
+    fx.beginPath(); fx.moveTo(sx,sy); fx.lineTo(ex,ey);
+    fx.strokeStyle=`hsl(${this.hue},100%,75%)`; fx.lineWidth=this.w*this.life; fx.lineCap='round';
+    fx.shadowColor=`hsl(${this.hue},100%,70%)`; fx.shadowBlur=12;
+    fx.stroke(); fx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════
+//  MAIN VIZ FRAME
+// ═══════════════════════════════════════════════════════
+let vHue=225,vEnergy=0,vRot=0,vBeatStr=0,frameCount=0;
+
+function vizFrame(bass,mid,high,energy,beat){
+  lerpM();
+  T+=.0055;
+  vRot+=moodC.rot+energy*.003;
+  vBeatStr=beat?1:vBeatStr*.88;
+
+  // ── Background layer ─────────────────────
+  bg.fillStyle=`rgba(3,3,16,${moodC.tr+(1-energy)*.06})`;
+  bg.fillRect(0,0,W,H);
+  drawStars(energy);
+  drawNebulae(energy);
+  drawAurora(energy,beat);
+
+  // ── Fx layer — clear ─────────────────────
+  fx.clearRect(0,0,W,H);
+
+  const R=Math.min(W,H)*(.17+bass*.07);
+
+  // ── Radial spectrum ───────────────────────
+  fx.save(); fx.translate(CX,CY); fx.rotate(vRot);
+  const BARS=180;
+  for(let i=0;i<BARS;i++){
+    const idx=Math.floor(i/BARS*freqD.length*.7);
+    const val=freqD[idx]/255;
+    if(val<.02) continue;
+    const angle=(i/BARS)*Math.PI*2;
+    const depth=0.5+0.5*Math.sin(angle);
+    const len=val*Math.min(W,H)*(.23+bass*.04)*depth+val*R*.18;
+    const h=vHue+(i/BARS)*moodC.sp;
+    fx.save();
+    fx.shadowColor=`hsla(${h},100%,70%,.65)`; fx.shadowBlur=7*val;
+    fx.strokeStyle=`hsla(${h},90%,${55+depth*15}%,${.28+val*.72})`;
+    fx.lineWidth=(1.5+val*3)*depth; fx.lineCap='round';
+    fx.beginPath();
+    fx.moveTo(Math.cos(angle)*R,   Math.sin(angle)*R);
+    fx.lineTo(Math.cos(angle)*(R+len),Math.sin(angle)*(R+len));
+    fx.stroke(); fx.restore();
+  }
+  // Outer ring
+  fx.strokeStyle=`hsla(${vHue},80%,65%,${.08+energy*.22})`; fx.lineWidth=1;
+  fx.beginPath(); fx.arc(0,0,R*1.55+energy*12,0,Math.PI*2); fx.stroke();
+  fx.restore();
+
+  // ── Center orb ───────────────────────────
+  fx.save();
+  fx.shadowColor=`hsla(${vHue},100%,75%,.9)`; fx.shadowBlur=25+bass*60;
+  const cg=fx.createRadialGradient(CX,CY,0,CX,CY,R);
+  cg.addColorStop(0,`hsla(${vHue},90%,85%,${.05+bass*.3})`);
+  cg.addColorStop(.6,`hsla(${vHue+30},80%,60%,${.02+bass*.08})`);
   cg.addColorStop(1,'transparent');
-  mc.fillStyle=cg; mc.beginPath(); mc.arc(CX,CY,R,0,Math.PI*2); mc.fill();
-  mc.strokeStyle=`hsla(${vHue},88%,70%,${.2+energy*.45})`; mc.lineWidth=1.5+bass*2.5;
-  mc.beginPath(); mc.arc(CX,CY,R,0,Math.PI*2); mc.stroke();
-  mc.restore();
+  fx.fillStyle=cg; fx.beginPath(); fx.arc(CX,CY,R,0,Math.PI*2); fx.fill();
+  fx.strokeStyle=`hsla(${vHue},90%,72%,${.2+energy*.5})`;
+  fx.lineWidth=1.5+bass*3; fx.beginPath(); fx.arc(CX,CY,R,0,Math.PI*2); fx.stroke();
+  fx.restore();
 
-  // Осциллограф
-  if (waveD) {
-    const Rw = Math.min(W,H)*.29+energy*14;
-    mc.save();
-    mc.strokeStyle=`hsla(${vHue+30},72%,70%,${.22+energy*.38})`; mc.lineWidth=1.5;
-    mc.shadowColor=`hsla(${vHue+30},100%,70%,.35)`; mc.shadowBlur=7;
-    mc.beginPath();
-    for (let i=0;i<waveD.length;i++){
+  // ── Oscilloscope ring ─────────────────────
+  if(waveD){
+    const Rw=Math.min(W,H)*.3+energy*16;
+    fx.save();
+    fx.strokeStyle=`hsla(${vHue+25},70%,72%,${.18+energy*.4})`; fx.lineWidth=1.5;
+    fx.shadowColor=`hsla(${vHue+25},100%,70%,.4)`; fx.shadowBlur=8;
+    fx.beginPath();
+    for(let i=0;i<waveD.length;i++){
       const a=(i/waveD.length)*Math.PI*2-Math.PI/2;
-      const d=((waveD[i]/128)-1)*26*energy; const r=Rw+d;
-      const x=CX+Math.cos(a)*r, y=CY+Math.sin(a)*r;
-      i===0?mc.moveTo(x,y):mc.lineTo(x,y);
+      const d=((waveD[i]/128)-1)*28*energy;
+      const x=CX+Math.cos(a)*(Rw+d), y=CY+Math.sin(a)*(Rw+d);
+      i===0?fx.moveTo(x,y):fx.lineTo(x,y);
     }
-    mc.closePath(); mc.stroke(); mc.restore();
+    fx.closePath(); fx.stroke(); fx.restore();
   }
 
-  // Частицы — кол-во зависит от настроения
-  const pMult = moodCur.parts;
-  if (beat) {
-    const cnt = Math.floor((18+bass*32)*pMult);
-    for (let i=0;i<cnt&&parts.length<400;i++) parts.push(new Part(CX,CY,vEnergy));
-    if (Math.random()<.4) {
+  // ── Ripples ───────────────────────────────
+  for(let i=ripples.length-1;i>=0;i--){
+    ripples[i].update(); ripples[i].draw();
+    if(ripples[i].life<=0) ripples.splice(i,1);
+  }
+
+  // ── Tendrils ──────────────────────────────
+  for(let i=tendrils.length-1;i>=0;i--){
+    tendrils[i].update(); tendrils[i].draw();
+    if(tendrils[i].life<=0) tendrils.splice(i,1);
+  }
+
+  // ── Particles ────────────────────────────
+  const pm=moodC.pm;
+  if(beat){
+    const n=Math.floor((18+bass*30)*pm);
+    for(let i=0;i<n&&parts.length<450;i++) parts.push(new Particle(CX,CY,vEnergy,'spark'));
+    if(Math.random()<.5&&pm>.5){
+      const n2=Math.floor(6*pm);
+      for(let i=0;i<n2&&parts.length<450;i++) parts.push(new Particle(CX,CY,vEnergy,'orb'));
+    }
+    // Ripple
+    if(ripples.length<8) ripples.push(new Ripple(CX,CY,vHue));
+    // Tendrils on heavy beat
+    if(bass>.5&&tendrils.length<20){
+      const cnt=Math.floor(3+bass*8);
+      for(let i=0;i<cnt;i++) tendrils.push(new Tendril(Math.random()*Math.PI*2,bass,R));
+    }
+    // Off-center ripples
+    if(Math.random()<.35){
       const a=Math.random()*Math.PI*2, r=Math.min(W,H)*(0.1+Math.random()*.2);
-      const c2 = Math.floor(8*pMult);
-      for (let i=0;i<c2&&parts.length<400;i++) parts.push(new Part(CX+Math.cos(a)*r,CY+Math.sin(a)*r,vEnergy));
+      ripples.push(new Ripple(CX+Math.cos(a)*r,CY+Math.sin(a)*r,vHue+40,Math.min(W,H)*.2));
+      const cnt=Math.floor(6*pm);
+      for(let i=0;i<cnt&&parts.length<450;i++) parts.push(new Particle(CX+Math.cos(a)*r,CY+Math.sin(a)*r,vEnergy,'spark'));
     }
   }
-  if (high>.25&&Math.random()<high*.22*pMult&&parts.length<400){
-    const a=Math.random()*Math.PI*2, r=Math.min(W,H)*(0.1+Math.random()*.22);
-    parts.push(new Part(CX+Math.cos(a)*r,CY+Math.sin(a)*r,high*.6));
+  if(high>.25&&Math.random()<high*.2*pm&&parts.length<450){
+    const a=Math.random()*Math.PI*2, r=Math.min(W,H)*(0.1+Math.random()*.25);
+    parts.push(new Particle(CX+Math.cos(a)*r,CY+Math.sin(a)*r,high*.5,'spark'));
   }
-  for (let i=parts.length-1;i>=0;i--) {
+  for(let i=parts.length-1;i>=0;i--){
     parts[i].update(); parts[i].draw();
-    if (parts[i].life<=0) parts.splice(i,1);
+    if(parts[i].life<=0) parts.splice(i,1);
   }
 
-  // Bloom
-  const bw=OC.width, bh=OC.height;
-  oc.clearRect(0,0,bw,bh); oc.drawImage(MC,0,0,bw,bh);
-  bc.clearRect(0,0,W,H);
-  bc.filter=`blur(12px) brightness(1.4)`;
-  bc.drawImage(OC,0,0,W,H);
-  bc.filter='none';
-  BC.style.opacity = moodCur.bloom;
+  // ── Bloom ─────────────────────────────────
+  const bw=COF.width,bh=COF.height;
+  of.clearRect(0,0,bw,bh); of.drawImage(CFX,0,0,bw,bh);
+  bl.clearRect(0,0,W,H);
+  bl.filter=`blur(13px) brightness(1.45)`;
+  bl.drawImage(COF,0,0,W,H); bl.filter='none';
+  CBL.style.opacity=moodC.bop;
+
+  // ── Waveform overview (top bar) ───────────
+  drawWaveformBar();
+
+  // ── Beat pulse on lyrics ──────────────────
+  if(beat&&lyrics.length>0){
+    const c=document.getElementById('ll-c0');
+    c.classList.remove('beat'); void c.offsetWidth; c.classList.add('beat');
+  }
 }
 
-// Главный цикл
-(function loop() {
+// Main loop
+(function loop(){
   requestAnimationFrame(loop);
-  if (!analyser) { mc.fillStyle='rgba(7,7,26,.07)'; mc.fillRect(0,0,W,H); return; }
+  if(!analyser){ bg.fillStyle='rgba(3,3,16,.07)'; bg.fillRect(0,0,W,H); return; }
   analyser.getByteFrequencyData(freqD);
   analyser.getByteTimeDomainData(waveD);
-  const bass=getBand(20,250), mid=getBand(250,2000), high=getBand(2000,20000);
+  const bass=getBand(20,250),mid=getBand(250,2000),high=getBand(2000,20000);
   const energy=bass*.5+mid*.3+high*.2;
-  vEnergy += (energy-vEnergy)*.08;
-  // Динамическое настроение от звука (BPM + баланс)
-  const tH = moodCur.hue + Math.sin(performance.now()/3000)*moodCur.hueSpread*.15
-    + bass*35*(bass>mid&&bass>high?1:0.3);
-  vHue += (tH-vHue)*.04;
-  const beat = processBeat(bass);
+  vEnergy+=(energy-vEnergy)*.08;
+  const tH=moodC.hue+Math.sin(T*.6)*moodC.sp*.12+(bass>mid&&bass>high?bass*32:0);
+  vHue+=(tH-vHue)*.04;
+  const beat=processBeat(bass);
   vizFrame(bass,mid,high,energy,beat);
-  if (song.duration) {
-    const pct = song.currentTime/song.duration;
-    document.getElementById('progress-fill').style.width = (pct*100)+'%';
-    const fmt = s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
-    document.getElementById('time-display').textContent = fmt(song.currentTime)+' / '+fmt(song.duration);
+  if(song.duration){
+    const pct=song.currentTime/song.duration;
+    document.getElementById('prog-fill').style.width=(pct*100)+'%';
+    const fmt=s=>`${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+    document.getElementById('time-d').textContent=fmt(song.currentTime)+' / '+fmt(song.duration);
   }
 })();
 
-// ════════════════════════════════════════════
-//  ПАРСИНГ ИМЕНИ ФАЙЛА + ОЧИСТКА ОТ РЕМИКСОВ
-// ════════════════════════════════════════════
-function parseFilename(name) {
-  let base = name.replace(/\.[^.]+$/, '');
-  base = base.replace(/^\d+[\s.\-]+/, '');
-  base = base.replace(/\s*[\(\[](feat|ft\.?)[^\)\]]*[\)\]]/gi, '');
-  base = base.replace(/\s*[\(\[](official|lyric|audio|video|mv|hd|hq)[^\)\]]*[\)\]]/gi, '');
-  base = base.replace(/\s*[\(\[]\d{4}[\)\]]/g, '');
-  const m = base.match(/^(.+?)\s*[-–—]\s*(.+)$/);
-  if (m) return { artist: m[1].trim(), title: m[2].trim() };
-  return { artist: '', title: base.trim() };
+// ═══════════════════════════════════════════════════════
+//  WAVEFORM OVERVIEW BAR
+// ═══════════════════════════════════════════════════════
+let wvData=null;
+
+function drawWaveformBar(){
+  const c=WVC, ct=c.getContext('2d');
+  ct.clearRect(0,0,c.width,c.height);
+  if(!wvData||!song.duration) return;
+  const barH=c.height*.75;
+  const progress=song.duration?song.currentTime/song.duration:0;
+  for(let i=0;i<wvData.length;i++){
+    const x=(i/wvData.length)*c.width;
+    const bw=c.width/wvData.length+.5;
+    const played=i/wvData.length<=progress;
+    const h=barH*(0.2+wvData[i]*.8);
+    ct.fillStyle=played
+      ?`hsla(${vHue},80%,65%,${.3+wvData[i]*.5})`
+      :`rgba(255,255,255,${.05+wvData[i]*.08})`;
+    ct.fillRect(x,(c.height-h)/2,bw,h);
+  }
+  // Playhead
+  const px=progress*c.width;
+  ct.fillStyle=`hsla(${vHue},100%,80%,.85)`;
+  ct.fillRect(px-1,0,2,c.height);
 }
 
-// Убрать из названия суффиксы ремиксов/слоудов для поиска
-function stripRemixSuffixes(title) {
+async function buildWaveformData(audioBuffer){
+  const pcm=audioBuffer.getChannelData(0);
+  const N=600, seg=Math.floor(pcm.length/N);
+  wvData=new Float32Array(N);
+  let mx=0;
+  for(let i=0;i<N;i++){
+    let peak=0; const b=i*seg;
+    for(let j=0;j<seg&&b+j<pcm.length;j++){const v=Math.abs(pcm[b+j]);if(v>peak)peak=v;}
+    wvData[i]=peak; if(peak>mx) mx=peak;
+  }
+  if(mx>0) for(let i=0;i<N;i++) wvData[i]/=mx;
+  document.getElementById('wv-bar').classList.add('show');
+}
+
+// ═══════════════════════════════════════════════════════
+//  FILENAME PARSING
+// ═══════════════════════════════════════════════════════
+function parseFilename(name){
+  let b=name.replace(/\.[^.]+$/,'');
+  b=b.replace(/^\d+[\s.\-]+/,'');
+  b=b.replace(/\s*[\(\[](feat|ft\.?)[^\)\]]*[\)\]]/gi,'');
+  b=b.replace(/\s*[\(\[](official|lyric|audio|video|mv|hd|hq)[^\)\]]*[\)\]]/gi,'');
+  b=b.replace(/\s*[\(\[]\d{4}[\)\]]/g,'');
+  const m=b.match(/^(.+?)\s*[-–—]\s*(.+)$/);
+  if(m) return{artist:m[1].trim(),title:m[2].trim()};
+  return{artist:'',title:b.trim()};
+}
+
+function stripRemix(title){
   return title
-    .replace(/\s*[\(\[](slowed|sped up|spedup|reverb|remix|edit|extended|live|acoustic|instrumental|cover|bootleg|mashup|remaster|radio edit|club mix|nightcore|lofi|lo-fi|deep slowed|slowed \+ reverb|bass boosted|8d audio)[^\)\]]*[\)\]]/gi, '')
-    .replace(/\s*[-–—]\s*(slowed|sped up|reverb|remix|edit|acoustic|nightcore|lofi|bass boost|8d).*/gi, '')
+    .replace(/\s*[\(\[](slowed|sped up|spedup|reverb|remix|edit|extended|live|acoustic|instrumental|cover|nightcore|lofi|lo-fi|bass boosted|8d audio|deep slowed|slowed \+ reverb)[^\)\]]*[\)\]]/gi,'')
+    .replace(/\s*[-–—]\s*(slowed|sped up|reverb|remix|edit|acoustic|nightcore|lofi|bass boost|8d).*/gi,'')
     .trim();
 }
 
-// Все варианты названия для поиска
-function titleVariants(artist, title) {
-  const clean = stripRemixSuffixes(title);
-  const variants = [];
-  if (artist) {
-    variants.push({ a: artist, t: title });
-    if (clean !== title) variants.push({ a: artist, t: clean });
-  }
-  variants.push({ a: '', t: title });
-  if (clean !== title) variants.push({ a: '', t: clean });
-  return variants;
+function titleVariants(artist,title){
+  const clean=stripRemix(title),res=[];
+  if(artist&&title) res.push({a:artist,t:title});
+  if(artist&&clean!==title) res.push({a:artist,t:clean});
+  res.push({a:'',t:title});
+  if(clean!==title) res.push({a:'',t:clean});
+  return res;
 }
 
-// ════════════════════════════════════════════
-//  ПОИСК ТЕКСТА — lrclib.net
-// ════════════════════════════════════════════
-function parseLRC(raw) {
-  return raw.trim().split('\n').map(line => {
-    const m = line.match(/^\[(\d+):(\d{2}[.,]\d+)\]\s*(.*)/);
-    if (!m || !m[3].trim()) return null;
-    return { t: m[3].trim(), s: parseInt(m[1])*60+parseFloat(m[2].replace(',','.')) };
+// ═══════════════════════════════════════════════════════
+//  LYRICS FETCH — lrclib.net
+// ═══════════════════════════════════════════════════════
+function parseLRC(raw){
+  return raw.trim().split('\n').map(line=>{
+    const m=line.match(/^\[(\d+):(\d{2}[.,]\d+)\]\s*(.*)/);
+    if(!m||!m[3].trim()) return null;
+    return{t:m[3].trim(),s:parseInt(m[1])*60+parseFloat(m[2].replace(',','.'))};
   }).filter(Boolean);
 }
 
-function plainToTimed(plain, duration) {
-  const lines = plain.split('\n').map(l=>l.trim()).filter(l=>l&&!/^\[/.test(l));
-  if (!lines.length) return [];
-  // Вокал обычно начинается после ~8% длины (интро), заканчивается за ~5% до конца
-  const startAt  = duration * 0.08;
-  const endAt    = duration * 0.93;
-  const usable   = endAt - startAt;
-  const step     = usable / lines.length;
-  return lines.map((t, i) => ({ t, s: startAt + i * step, approx: true }));
+function plainToTimed(plain,dur){
+  const lines=plain.split('\n').map(l=>l.trim()).filter(l=>l&&!/^\[/.test(l));
+  if(!lines.length) return[];
+  const start=dur*.08, usable=dur*.86, step=usable/lines.length;
+  return lines.map((t,i)=>({t,s:start+i*step,approx:true}));
 }
 
-async function fetchJson(url, ms=9000) {
-  const ac = new AbortController();
-  const tid = setTimeout(()=>ac.abort(), ms);
-  try {
-    const r = await fetch(url, { signal: ac.signal });
-    clearTimeout(tid);
-    if (!r.ok) return null;
-    return await r.json();
-  } catch { clearTimeout(tid); return null; }
+async function fetchJson(url,ms=9000){
+  const ac=new AbortController();
+  const tid=setTimeout(()=>ac.abort(),ms);
+  try{const r=await fetch(url,{signal:ac.signal});clearTimeout(tid);return r.ok?await r.json():null;}
+  catch{clearTimeout(tid);return null;}
 }
 
-function matchScore(item, artist, title) {
-  let s = 0;
-  const ia = (item.artistName||'').toLowerCase();
-  const it = (item.trackName||'').toLowerCase();
-  const a = artist.toLowerCase(), t = title.toLowerCase();
-  if (it===t) s+=20; else if (it.includes(t)||t.includes(it)) s+=10;
-  if (a&&(ia===a||ia.includes(a)||a.includes(ia))) s+=8;
-  if (item.syncedLyrics) s+=6;
-  if (item.plainLyrics)  s+=2;
+function matchScore(item,a,t){
+  let s=0;
+  const ia=(item.artistName||'').toLowerCase(),it=(item.trackName||'').toLowerCase();
+  a=a.toLowerCase();t=t.toLowerCase();
+  if(it===t)s+=20;else if(it.includes(t)||t.includes(it))s+=10;
+  if(a&&(ia===a||ia.includes(a)||a.includes(ia)))s+=8;
+  if(item.syncedLyrics)s+=6; if(item.plainLyrics)s+=2;
   return s;
 }
 
-async function fetchLRC(artist, title) {
-  const variants = titleVariants(artist, title);
-  const tried = new Set();
-
-  for (const { a, t } of variants) {
-    // Поиск
-    const qSearch = a ? `${a} ${t}` : t;
-    const urlSearch = `https://lrclib.net/api/search?q=${encodeURIComponent(qSearch)}`;
-    if (!tried.has(urlSearch)) {
-      tried.add(urlSearch);
-      const data = await fetchJson(urlSearch);
-      if (Array.isArray(data) && data.length) {
-        const best = data.map(i=>({i,s:matchScore(i,a||artist,t)})).sort((a,b)=>b.s-a.s)[0]?.i;
-        if (best?.syncedLyrics) return { synced:true,  text:best.syncedLyrics };
-        if (best?.plainLyrics)  return { synced:false, text:best.plainLyrics  };
+async function fetchLRC(artist,title){
+  const variants=titleVariants(artist,title);
+  const tried=new Set();
+  for(const{a,t}of variants){
+    const sq=a?`${a} ${t}`:t;
+    const su=`https://lrclib.net/api/search?q=${encodeURIComponent(sq)}`;
+    if(!tried.has(su)){
+      tried.add(su);
+      const d=await fetchJson(su);
+      if(Array.isArray(d)&&d.length){
+        const best=d.map(i=>({i,s:matchScore(i,a||artist,t)})).sort((a,b)=>b.s-a.s)[0]?.i;
+        if(best?.syncedLyrics) return{synced:true,text:best.syncedLyrics};
+        if(best?.plainLyrics)  return{synced:false,text:best.plainLyrics};
       }
     }
-    // Точное совпадение
-    if (a && t) {
-      const urlGet = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(a)}&track_name=${encodeURIComponent(t)}`;
-      if (!tried.has(urlGet)) {
-        tried.add(urlGet);
-        const data = await fetchJson(urlGet);
-        if (data?.syncedLyrics) return { synced:true,  text:data.syncedLyrics };
-        if (data?.plainLyrics)  return { synced:false, text:data.plainLyrics  };
+    if(a&&t){
+      const gu=`https://lrclib.net/api/get?artist_name=${encodeURIComponent(a)}&track_name=${encodeURIComponent(t)}`;
+      if(!tried.has(gu)){
+        tried.add(gu);
+        const d=await fetchJson(gu);
+        if(d?.syncedLyrics) return{synced:true,text:d.syncedLyrics};
+        if(d?.plainLyrics)  return{synced:false,text:d.plainLyrics};
       }
     }
   }
   return null;
 }
 
-// ════════════════════════════════════════════
-//  АВТОСИНХРОНИЗАЦИЯ — анализ аудио
-// ════════════════════════════════════════════
-let currentFile = null;  // сохраняем File для анализа
-
-function showSyncStatus(msg, active = false) {
-  const el = document.getElementById('sync-status');
-  el.textContent = msg;
-  el.className = 'show' + (active ? ' active' : '');
-  clearTimeout(el._t);
-  if (!active) el._t = setTimeout(() => el.classList.remove('show'), 3500);
+// ═══════════════════════════════════════════════════════
+//  AUTO-SYNC — vocal onset detection
+// ═══════════════════════════════════════════════════════
+function showSyncSt(msg,active=false){
+  const el=document.getElementById('sync-st');
+  el.textContent=msg; el.className=(msg?'show':'')+(active?' active':'');
+  clearTimeout(el._t); if(!active&&msg) el._t=setTimeout(()=>el.classList.remove('show'),3500);
 }
 
-// Декодируем аудио во временный буфер (отдельный от плеера контекст)
-async function decodeAudioBuffer(file) {
-  const ab = await file.arrayBuffer();
-  const tmp = new (window.AudioContext || window.webkitAudioContext)();
-  try {
-    return await tmp.decodeAudioData(ab);
-  } finally {
-    tmp.close();
+async function autoSync(file,lines){
+  if(!lines.length||!file) return lines;
+  showSyncSt('🎵 Анализирую аудио…',true);
+  try{
+    const ab=await file.arrayBuffer();
+    const tmp=new(window.AudioContext||window.webkitAudioContext)();
+    const buf=await tmp.decodeAudioData(ab); tmp.close();
+
+    // Build waveform overview while we have the buffer
+    buildWaveformData(buf);
+
+    const sr=buf.sampleRate;
+    // Bandpass filter vocals via OfflineAudioContext
+    const off=new OfflineAudioContext(1,buf.length,sr);
+    const src2=off.createBufferSource(); src2.buffer=buf;
+    const hp=off.createBiquadFilter(); hp.type='highpass'; hp.frequency.value=280; hp.Q.value=.8;
+    const lp=off.createBiquadFilter(); lp.type='lowpass';  lp.frequency.value=3800; lp.Q.value=.8;
+    src2.connect(hp); hp.connect(lp); lp.connect(off.destination); src2.start(0);
+    const filt=await off.startRendering();
+    const pcm=filt.getChannelData(0);
+
+    // RMS onset strength
+    const HOP=Math.floor(sr*.01), WIN=HOP*3, nF=Math.floor((pcm.length-WIN)/HOP);
+    const rms=new Float32Array(nF);
+    for(let i=0;i<nF;i++){let s=0,b=i*HOP; for(let j=0;j<WIN;j++)s+=pcm[b+j]*pcm[b+j]; rms[i]=Math.sqrt(s/WIN);}
+    const logR=rms.map(v=>Math.log1p(v*90));
+    const onset=new Float32Array(nF);
+    for(let i=5;i<nF;i++) onset[i]=Math.max(0,logR[i]-logR[i-5]);
+
+    // Snap each line to nearest onset within ±1.3s
+    const FPS=100,WIN2=Math.floor(1.3*FPS);
+    const aligned=lines.map((line,li)=>{
+      const center=Math.round(line.s*FPS);
+      const minF=li>0?Math.round(lines[li-1].s*FPS)+3:0;
+      const lo=Math.max(minF,center-WIN2),hi=Math.min(nF-1,center+WIN2);
+      let best=center,bv=-1;
+      for(let f=lo;f<=hi;f++){if(onset[f]>bv){bv=onset[f];best=f;}}
+      return bv>.008?{...line,s:best/FPS}:line;
+    });
+
+    // Sanity: median shift <2.5s
+    const shifts=aligned.map((a,i)=>Math.abs(a.s-lines[i].s));
+    shifts.sort((a,b)=>a-b);
+    const ok=shifts[Math.floor(shifts.length/2)]<2.5;
+    showSyncSt('✓ Синхронизировано');
+    return ok?aligned:lines;
+  }catch(e){
+    console.warn('autoSync:',e);
+    showSyncSt('');
+    return lines;
   }
 }
 
-// Фильтруем аудио в вокальном диапазоне через OfflineAudioContext
-// (нативный DSP, быстро — 2-4с на 3-минутную песню)
-async function computeVocalOnsets(buf) {
-  const sr = buf.sampleRate;
+// ═══════════════════════════════════════════════════════
+//  LYRICS DISPLAY
+// ═══════════════════════════════════════════════════════
+let lyrics=[],lastIdx=-2;
+const LL={p2:document.getElementById('ll-p2'),p1:document.getElementById('ll-p1'),
+          c0:document.getElementById('ll-c0'),n1:document.getElementById('ll-n1'),
+          n2:document.getElementById('ll-n2')};
 
-  // OfflineAudioContext: рендерим только вокальный диапазон 280–3600 Гц
-  const offCtx = new OfflineAudioContext(1, buf.length, sr);
-  const src = offCtx.createBufferSource();
-  src.buffer = buf;
+function setLyricsVisible(v){document.getElementById('lyrics-wrap').style.display=v?'flex':'none';}
 
-  // Highpass 280 Гц — срезаем бас и удары
-  const hp = offCtx.createBiquadFilter();
-  hp.type = 'highpass'; hp.frequency.value = 280; hp.Q.value = 0.9;
+let chorusSet=new Set();
+function detectChorus(lines){
+  const cnt={};
+  lines.forEach(l=>{const k=l.t.toLowerCase().trim();cnt[k]=(cnt[k]||0)+1;});
+  chorusSet=new Set(Object.entries(cnt).filter(([,v])=>v>=3).map(([k])=>k));
+}
+function isChorus(t){return chorusSet.has(t.toLowerCase().trim());}
 
-  // Lowpass 3600 Гц — срезаем высокочастотные шипелки
-  const lp = offCtx.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.value = 3600; lp.Q.value = 0.9;
-
-  src.connect(hp); hp.connect(lp); lp.connect(offCtx.destination);
-  src.start(0);
-
-  const filtered = await offCtx.startRendering();
-  const pcm = filtered.getChannelData(0);
-
-  // RMS-огибающая в окнах по 10 мс → onset strength
-  const HOP = Math.floor(sr * 0.01);   // 10 мс
-  const WIN = HOP * 3;                  // 30 мс окно
-  const nF  = Math.floor((pcm.length - WIN) / HOP);
-  const rms = new Float32Array(nF);
-
-  for (let i = 0; i < nF; i++) {
-    let s = 0, b = i * HOP;
-    for (let j = 0; j < WIN; j++) s += pcm[b + j] * pcm[b + j];
-    rms[i] = Math.sqrt(s / WIN);
-  }
-
-  // Onset = положительный прирост log-RMS (аналог спектрального flux)
-  const logRms   = rms.map(v => Math.log1p(v * 80));
-  const strength = new Float32Array(nF);
-  for (let i = 5; i < nF; i++) {
-    strength[i] = Math.max(0, logRms[i] - logRms[i - 5]);
-  }
-
-  return { strength, fps: 100 };  // 100 кадров/сек
+function applyLine(el,obj,cls){
+  el.className='ll';
+  if(!obj){el.classList.add('hidden');el.textContent='';return;}
+  el.textContent=obj.t; el.classList.add(cls);
+  if(isChorus(obj.t)) el.classList.add('glow');
 }
 
-// Привязываем каждый LRC-таймстемп к ближайшему вокальному онсету
-function snapToOnsets(lines, onsetData, maxShift = 1.2) {
-  const { strength, fps } = onsetData;
-  const WIN = Math.floor(maxShift * fps);
-
-  const aligned = lines.map((line, li) => {
-    const center = Math.round(line.s * fps);
-    // Не уходить раньше предыдущей строки
-    const minF = li > 0 ? Math.round(lines[li - 1].s * fps) + Math.floor(0.1 * fps) : 0;
-    const lo   = Math.max(minF, center - WIN);
-    const hi   = Math.min(strength.length - 1, center + WIN);
-
-    let best = center, bestVal = -1;
-    for (let f = lo; f <= hi; f++) {
-      if (strength[f] > bestVal) { bestVal = strength[f]; best = f; }
-    }
-
-    // Только снапаем если онсет достаточно значимый
-    return bestVal > 0.01 ? { ...line, s: best / fps } : line;
-  });
-
-  // Проверка: если медианный сдвиг > 2с — анализ провалился, возвращаем оригинал
-  const shifts = aligned.map((a, i) => Math.abs(a.s - lines[i].s));
-  shifts.sort((a, b) => a - b);
-  const median = shifts[Math.floor(shifts.length / 2)];
-  return median > 2.0 ? lines : aligned;
-}
-
-// Главная функция авто-синхронизации
-async function autoSync(file, lines) {
-  if (!lines.length || !file) return lines;
-  showSyncStatus('🎵 Анализирую аудио…', true);
-  try {
-    const buf      = await decodeAudioBuffer(file);
-    const onsets   = await computeVocalOnsets(buf);
-    const result   = snapToOnsets(lines, onsets);
-    showSyncStatus('✓ Синхронизировано');
-    return result;
-  } catch (err) {
-    console.warn('autoSync:', err);
-    showSyncStatus('');
-    return lines;  // fallback — оригинальные таймстемпы
-  }
-}
-
-// ════════════════════════════════════════════
-//  ОТОБРАЖЕНИЕ ТЕКСТА
-// ════════════════════════════════════════════
-let lyrics = [], lastIdx = -2;
-const elPrev = document.getElementById('lline-prev');
-const elCur  = document.getElementById('lline-cur');
-const elNxt  = document.getElementById('lline-nxt');
-
-function setLyricsVisible(v) { document.getElementById('lyrics-wrap').style.display = v ? 'flex' : 'none'; }
-
-let chorusSet = new Set();
-function detectChorus(lines) {
-  const cnt = {};
-  lines.forEach(l => { const k=l.t.toLowerCase().trim(); cnt[k]=(cnt[k]||0)+1; });
-  chorusSet = new Set(Object.entries(cnt).filter(([,v])=>v>=3).map(([k])=>k));
-}
-function isChorus(t) { return chorusSet.has(t.toLowerCase().trim()); }
-
-function applyLine(el, obj, cls) {
-  el.className = 'lline';
-  if (!obj) { el.classList.add('hidden'); el.textContent=''; return; }
-  el.textContent = obj.t; el.classList.add(cls);
-  if (isChorus(obj.t)) el.classList.add('glow');
-}
-
-function updateLyrics(ct) {
-  if (!lyrics.length) return;
-
-  // До первой строки — ничего не показываем
-  if (ct < lyrics[0].s) {
-    if (lastIdx !== -1) {
-      lastIdx = -1;
-      elPrev.className='lline hidden'; elPrev.textContent='';
-      elCur.className ='lline hidden'; elCur.textContent ='';
-      elNxt.className ='lline hidden'; elNxt.textContent ='';
+function updateLyrics(ct){
+  if(!lyrics.length) return;
+  if(ct<lyrics[0].s){
+    if(lastIdx!==-1){
+      lastIdx=-1;
+      Object.values(LL).forEach(el=>{el.className='ll hidden';el.textContent='';});
     }
     return;
   }
-
-  // Бинарный поиск: последняя строка где s <= ct
-  let lo=0, hi=lyrics.length-1, idx=0;
-  while (lo<=hi) {
-    const mid=(lo+hi)>>1;
-    if (lyrics[mid].s<=ct) { idx=mid; lo=mid+1; }
-    else hi=mid-1;
-  }
-
-  if (idx===lastIdx) return;
-  lastIdx=idx;
-
-  applyLine(elPrev, lyrics[idx-1]||null, 'prev');
-  applyLine(elCur,  lyrics[idx]  ||null, 'cur');
-  applyLine(elNxt,  lyrics[idx+1]||null, 'nxt');
+  let lo=0,hi=lyrics.length-1,idx=0;
+  while(lo<=hi){const mid=(lo+hi)>>1;if(lyrics[mid].s<=ct){idx=mid;lo=mid+1;}else hi=mid-1;}
+  if(idx===lastIdx) return; lastIdx=idx;
+  applyLine(LL.p2,lyrics[idx-2]||null,'p2');
+  applyLine(LL.p1,lyrics[idx-1]||null,'p1');
+  applyLine(LL.c0,lyrics[idx]  ||null,'c0');
+  applyLine(LL.n1,lyrics[idx+1]||null,'n1');
+  applyLine(LL.n2,lyrics[idx+2]||null,'n2');
 }
 
 (function lyricsLoop(){
   requestAnimationFrame(lyricsLoop);
-  if (lyrics.length && song.duration) updateLyrics(song.currentTime);
+  if(lyrics.length&&song.duration) updateLyrics(song.currentTime);
 })();
 
-// ════════════════════════════════════════════
-//  RECENT SONGS (localStorage)
-// ════════════════════════════════════════════
-function saveRecent(name, artist, title) {
-  try {
-    let list = JSON.parse(localStorage.getItem('musig_recent') || '[]');
-    list = list.filter(r=>r.name!==name);
-    list.unshift({ name, artist, title, ts: Date.now() });
-    list = list.slice(0, 8);
-    localStorage.setItem('musig_recent', JSON.stringify(list));
-  } catch {}
+// ═══════════════════════════════════════════════════════
+//  RECENT SONGS
+// ═══════════════════════════════════════════════════════
+function saveRecent(name,artist,title){
+  try{
+    let l=JSON.parse(localStorage.getItem('musig_r')||'[]');
+    l=l.filter(r=>r.name!==name); l.unshift({name,artist,title});
+    localStorage.setItem('musig_r',JSON.stringify(l.slice(0,8)));
+  }catch{}
 }
-
-function renderRecent() {
-  try {
-    const list = JSON.parse(localStorage.getItem('musig_recent') || '[]');
-    if (!list.length) return;
-    const wrap = document.getElementById('recent-wrap');
-    const ul = document.getElementById('recent-list');
-    ul.innerHTML = '';
-    list.forEach(r => {
-      const d = document.createElement('div');
-      d.className = 'recent-item';
-      d.innerHTML = `<span class="recent-item-icon">🎵</span><div class="recent-item-info"><div class="recent-item-name">${r.artist ? r.artist+' — '+r.title : r.title}</div><div class="recent-item-sub">Недавно</div></div>`;
-      d.onclick = () => openSearchWithHint(r.artist, r.title, 'Нажми «Найти» чтобы загрузить текст');
+function renderRecent(){
+  try{
+    const l=JSON.parse(localStorage.getItem('musig_r')||'[]');
+    if(!l.length) return;
+    const ul=document.getElementById('recent-list');
+    ul.innerHTML='';
+    l.forEach(r=>{
+      const d=document.createElement('div'); d.className='recent-item';
+      d.innerHTML=`<span class="ri-icon">🎵</span><div class="ri-name">${r.artist?r.artist+' — '+r.title:r.title}</div>`;
+      d.onclick=()=>openSearchHint(r.artist,r.title,'');
       ul.appendChild(d);
     });
-    wrap.style.display = 'block';
-  } catch {}
+    document.getElementById('recent-wrap').style.display='block';
+  }catch{}
 }
 
-// ════════════════════════════════════════════
-//  ЗАГРУЗКА ФАЙЛА
-// ════════════════════════════════════════════
-let currentArtist='', currentTitle='';
+// ═══════════════════════════════════════════════════════
+//  LOAD FILE
+// ═══════════════════════════════════════════════════════
+let curArtist='',curTitle='';
 
-async function loadFile(file) {
-  if (!file) return;
-  if (!file.type.startsWith('audio/') && !/\.(mp3|ogg|wav|flac|m4a|aac|opus)$/i.test(file.name)) {
-    alert('Выбери аудиофайл (mp3, ogg, wav, flac …)'); return;
+function showFetch(msg,delay=4500){
+  const el=document.getElementById('fetch-st');
+  el.textContent=msg; el.classList.add('show');
+  clearTimeout(el._t); el._t=setTimeout(()=>el.classList.remove('show'),delay);
+}
+
+async function loadFile(file){
+  if(!file) return;
+  if(!file.type.startsWith('audio/')&&!/\.(mp3|ogg|wav|flac|m4a|aac|opus)$/i.test(file.name)){
+    alert('Выбери аудиофайл (mp3, wav, flac …)'); return;
   }
+  currentFile=file;
+  setupAudio(URL.createObjectURL(file));
 
-  currentFile = file;   // сохраняем для авто-синхронизации
-  const url = URL.createObjectURL(file);
-  setupAudio(url);
+  const{artist,title}=parseFilename(file.name);
+  curArtist=artist; curTitle=title;
+  const dn=artist?`${artist} — ${title}`:title;
 
-  const { artist, title } = parseFilename(file.name);
-  currentArtist = artist; currentTitle = title;
-  const displayName = artist ? `${artist} — ${title}` : title;
-
-  document.getElementById('track-title').textContent = displayName;
+  document.getElementById('track-title').textContent=dn;
   document.getElementById('topbar').classList.add('show');
-  document.getElementById('time-display').classList.add('show');
+  document.getElementById('time-d').classList.add('show');
 
-  const up = document.getElementById('upload');
-  up.classList.add('fade'); setTimeout(()=>up.style.display='none',700);
+  const up=document.getElementById('upload');
+  up.classList.add('fade'); setTimeout(()=>up.style.display='none',750);
 
   lyrics=[]; lastIdx=-2; setLyricsVisible(false);
-  document.getElementById('no-lyrics').classList.remove('show');
-  document.getElementById('btn-lyrics').classList.remove('active');
+  document.getElementById('no-lrc').classList.remove('show');
+  document.getElementById('btn-lyrics').classList.remove('on');
+  wvData=null; document.getElementById('wv-bar').classList.remove('show');
 
-  setMood(moodFromText(displayName), true);
+  setMood(moodFromText(dn),true);
+  showFetch('Ищу текст песни…');
 
-  showStatus('Ищу текст песни…');
-  const result = await fetchLRC(artist, title);
+  const result=await fetchLRC(artist,title);
 
-  if (result && result.synced) {
-    // ─── Синхронизированный LRC ─────────────
-    const rawLines = parseLRC(result.text);
-    detectChorus(rawLines);
-    setMood(moodFromText(rawLines.map(l=>l.t).join(' ')));
-    lyrics = rawLines;
-    setLyricsVisible(true);
-    document.getElementById('btn-lyrics').classList.add('active');
-    showStatus(`✓ Текст найден — синхронизирую…`);
-
-    // Авто-синхронизация в фоне пока песня уже играет
-    autoSync(file, rawLines).then(aligned => {
-      if (currentFile === file) {   // всё ещё та же песня
-        Object.assign(lyrics, aligned);  // обновляем in-place
-        lastIdx = -2;
-      }
+  if(result&&result.synced){
+    const raw=parseLRC(result.text);
+    detectChorus(raw);
+    setMood(moodFromText(raw.map(l=>l.t).join(' ')));
+    lyrics=raw; setLyricsVisible(true);
+    document.getElementById('btn-lyrics').classList.add('on');
+    showFetch(`✓ Текст найден — синхронизирую…`);
+    autoSync(file,raw).then(aligned=>{
+      if(currentFile===file){Object.assign(lyrics,aligned);lastIdx=-2;}
     });
 
-  } else if (result && !result.synced) {
-    // ─── Обычный текст — авто-тайминг + синхронизация ──
-    showStatus('Текст найден, синхронизирую…');
+  }else if(result&&!result.synced){
+    showFetch('Текст найден, синхронизирую…');
     setMood(moodFromText(result.text));
-
-    async function applyPlain() {
-      const dur = song.duration > 1 ? song.duration : await new Promise(res => {
-        song.addEventListener('loadedmetadata', () => res(song.duration), { once: true });
-      });
-      const timed = plainToTimed(result.text, dur);
+    async function applyPlain(){
+      const dur=song.duration>1?song.duration:await new Promise(res=>song.addEventListener('loadedmetadata',()=>res(song.duration),{once:true}));
+      const timed=plainToTimed(result.text,dur);
       detectChorus(timed);
-      // Синхронизируем plain тоже
-      const aligned = await autoSync(file, timed);
-      if (currentFile === file) {
-        lyrics = aligned; setLyricsVisible(true);
-        document.getElementById('btn-lyrics').classList.add('active');
-      }
+      const aligned=await autoSync(file,timed);
+      if(currentFile===file){lyrics=aligned;setLyricsVisible(true);document.getElementById('btn-lyrics').classList.add('on');}
     }
     applyPlain();
 
-  } else {
-    showStatus('Текст не найден', 4000);
-    document.getElementById('no-lyrics').classList.add('show');
-    openSearchWithHint(artist, title, `Не нашлось для: "${displayName}"`);
+  }else{
+    showFetch('Текст не найден',4500);
+    document.getElementById('no-lrc').classList.add('show');
+    openSearchHint(artist,title,`Не нашлось автоматически: "${dn}"`);
+    // Still build waveform
+    if(file.size<60*1024*1024){
+      file.arrayBuffer().then(ab=>{
+        const t=new(window.AudioContext||window.webkitAudioContext)();
+        t.decodeAudioData(ab).then(b=>{buildWaveformData(b);t.close();}).catch(()=>t.close());
+      }).catch(()=>{});
+    }
   }
-
-  saveRecent(file.name, artist, title);
+  saveRecent(file.name,artist,title);
 }
 
-function showStatus(msg, delay=4500) {
-  const el = document.getElementById('fetch-status');
-  el.textContent = msg; el.classList.add('show');
-  clearTimeout(el._t); el._t = setTimeout(()=>el.classList.remove('show'), delay);
-}
+// ═══════════════════════════════════════════════════════
+//  MANUAL SEARCH
+// ═══════════════════════════════════════════════════════
+function openSearch(){openSearchHint(curArtist,curTitle);}
 
-// ════════════════════════════════════════════
-//  ПОИСК ВРУЧНУЮ
-// ════════════════════════════════════════════
-function openSearch() { openSearchWithHint(currentArtist, currentTitle); }
-
-function openSearchWithHint(artist, title, notice='') {
-  document.getElementById('inp-artist').value = artist;
-  document.getElementById('inp-title').value  = title;
-  document.getElementById('search-card-sub').textContent = artist ? `${artist} — ${title}` : title;
-  const n = document.getElementById('search-notice');
-  n.textContent = notice; n.className = notice ? 'show' : '';
-  document.getElementById('search-status').textContent = '';
-  document.getElementById('search-tips').classList.remove('show');
+function openSearchHint(artist,title,notice=''){
+  document.getElementById('inp-a').value=artist;
+  document.getElementById('inp-t').value=title;
+  document.getElementById('sc-sub').textContent=artist?`${artist} — ${title}`:title;
+  const n=document.getElementById('sc-notice'); n.textContent=notice; n.className=notice?'show':'';
+  document.getElementById('s-status').textContent='';
+  document.getElementById('s-tips').classList.remove('show');
   document.getElementById('search-overlay').classList.add('show');
 }
 
-document.getElementById('search-btn').addEventListener('click', async () => {
-  const artist = document.getElementById('inp-artist').value.trim();
-  const title  = document.getElementById('inp-title').value.trim();
-  if (!title) { document.getElementById('search-status').textContent='Введи название'; return; }
-
-  const ss = document.getElementById('search-status');
-  ss.textContent='Ищу…'; ss.className='';
-  document.getElementById('search-tips').classList.remove('show');
-
-  const result = await fetchLRC(artist, title);
-  if (result) {
-    lastIdx=-2; currentArtist=artist; currentTitle=title;
-    document.getElementById('track-title').textContent = artist?`${artist} — ${title}`:title;
-    if (result.synced) {
-      lyrics = parseLRC(result.text);
-      setMood(moodFromText(lyrics.map(l=>l.t).join(' ')));
-    } else {
-      const dur = song.duration>0 ? song.duration : 200;
-      lyrics = plainToTimed(result.text, dur);
-      setMood(moodFromText(result.text));
-    }
-    detectChorus(lyrics); setLyricsVisible(true);
-    document.getElementById('btn-lyrics').classList.add('active');
+document.getElementById('search-btn').addEventListener('click',async()=>{
+  const artist=document.getElementById('inp-a').value.trim();
+  const title =document.getElementById('inp-t').value.trim();
+  if(!title){document.getElementById('s-status').textContent='Введи название';return;}
+  const ss=document.getElementById('s-status'); ss.textContent='Ищу…'; ss.className='';
+  document.getElementById('s-tips').classList.remove('show');
+  const result=await fetchLRC(artist,title);
+  if(result){
+    lastIdx=-2; curArtist=artist; curTitle=title;
+    document.getElementById('track-title').textContent=artist?`${artist} — ${title}`:title;
+    const dur=song.duration>0?song.duration:200;
+    if(result.synced){lyrics=parseLRC(result.text);}
+    else{lyrics=plainToTimed(result.text,dur);}
+    detectChorus(lyrics);
+    setMood(moodFromText(lyrics.map(l=>l.t).join(' ')));
+    setLyricsVisible(true);
+    document.getElementById('btn-lyrics').classList.add('on');
     document.getElementById('search-overlay').classList.remove('show');
-    document.getElementById('no-lyrics').classList.remove('show');
-    showStatus(`✓ Текст загружен`, 2500);
-  } else {
+    document.getElementById('no-lrc').classList.remove('show');
+    showFetch('✓ Текст загружен',2500);
+    // Auto-sync с текущим файлом
+    if(currentFile&&result.synced){
+      autoSync(currentFile,lyrics).then(a=>{if(a!==lyrics){Object.assign(lyrics,a);lastIdx=-2;}});
+    }
+  }else{
     ss.textContent='Не найдено'; ss.className='err';
-    // Показать подсказки что убрать
-    const stripped = stripRemixSuffixes(title);
-    if (stripped !== title) {
-      const tips = document.getElementById('search-tips');
-      const list = document.getElementById('search-tips-list');
-      list.innerHTML='';
-      const chip = document.createElement('div');
-      chip.className='tip-chip'; chip.textContent=stripped;
-      chip.onclick=()=>{ document.getElementById('inp-title').value=stripped; };
-      list.appendChild(chip);
-      tips.classList.add('show');
+    const clean=stripRemix(title);
+    if(clean!==title){
+      const tl=document.getElementById('s-tips-list'); tl.innerHTML='';
+      const chip=document.createElement('div'); chip.className='tip-chip'; chip.textContent=clean;
+      chip.onclick=()=>document.getElementById('inp-t').value=clean;
+      tl.appendChild(chip); document.getElementById('s-tips').classList.add('show');
     }
   }
 });
 
-document.getElementById('skip-btn').addEventListener('click',()=>{
-  document.getElementById('search-overlay').classList.remove('show');
-});
+document.getElementById('skip-btn').addEventListener('click',()=>document.getElementById('search-overlay').classList.remove('show'));
 
-// ════════════════════════════════════════════
-//  УПРАВЛЕНИЕ
-// ════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+//  CONTROLS
+// ═══════════════════════════════════════════════════════
 document.getElementById('btn-pause').addEventListener('click',()=>{
-  if (!currentBlobUrl) return;
-  if (audioCtx?.state==='suspended') audioCtx.resume();
-  if (song.paused) { song.play().catch(()=>{}); document.getElementById('btn-pause').textContent='⏸ Пауза'; }
-  else             { song.pause();              document.getElementById('btn-pause').textContent='▶ Играть'; }
+  if(!currentBlobUrl) return;
+  if(ctx?.state==='suspended') ctx.resume();
+  if(song.paused){song.play().catch(()=>{});document.getElementById('btn-pause').textContent='⏸ Пауза';}
+  else{song.pause();document.getElementById('btn-pause').textContent='▶ Играть';}
 });
 
-document.getElementById('btn-lyrics').addEventListener('click', openSearch);
+document.getElementById('btn-lyrics').addEventListener('click',openSearch);
 
 document.getElementById('btn-new').addEventListener('click',()=>{
   song.pause(); lyrics=[]; lastIdx=-2; setLyricsVisible(false);
-  document.getElementById('no-lyrics').classList.remove('show');
-  document.getElementById('topbar').classList.remove('show');
-  document.getElementById('time-display').classList.remove('show');
-  document.getElementById('progress-fill').style.width='0%';
+  ['no-lrc','topbar','time-d'].forEach(id=>document.getElementById(id).classList.remove('show'));
+  document.getElementById('prog-fill').style.width='0%';
   document.getElementById('btn-pause').textContent='⏸ Пауза';
-  document.getElementById('btn-lyrics').classList.remove('active');
-  if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl=null; }
-  currentFile = null;
-  setMood('neutral', true);
-  const up = document.getElementById('upload');
+  document.getElementById('btn-lyrics').classList.remove('on');
+  if(currentBlobUrl){URL.revokeObjectURL(currentBlobUrl);currentBlobUrl=null;}
+  currentFile=null; wvData=null;
+  document.getElementById('wv-bar').classList.remove('show');
+  setMood('neutral',true);
+  const up=document.getElementById('upload');
   up.style.display=''; requestAnimationFrame(()=>up.classList.remove('fade'));
   renderRecent();
 });
 
-// Прогресс-бар (клик + тач)
-function seekTo(x) {
-  if (!song.duration) return;
-  song.currentTime = Math.max(0,Math.min(song.duration,(x/innerWidth)*song.duration)); lastIdx=-2;
+// Progress bar + touch
+function seekTo(x){
+  if(!song.duration) return;
+  song.currentTime=Math.max(0,Math.min(song.duration,(x/innerWidth)*song.duration)); lastIdx=-2;
 }
-const pw = document.getElementById('progress-wrap');
+const pw=document.getElementById('prog-wrap');
 pw.addEventListener('click',e=>seekTo(e.clientX));
 pw.addEventListener('touchstart',e=>{e.preventDefault();seekTo(e.touches[0].clientX);},{passive:false});
 pw.addEventListener('touchmove', e=>{e.preventDefault();seekTo(e.touches[0].clientX);},{passive:false});
 
-// Клавиши
+// Keyboard
 document.addEventListener('keydown',e=>{
-  if (e.target.tagName==='INPUT') return;
-  if (e.code==='Space')        { e.preventDefault(); document.getElementById('btn-pause').click(); }
-  if (e.code==='ArrowRight') { if(song.duration){song.currentTime=Math.min(song.duration,song.currentTime+10);lastIdx=-2;} }
-  if (e.code==='ArrowLeft')  { song.currentTime=Math.max(0,song.currentTime-10);lastIdx=-2; }
+  if(e.target.tagName==='INPUT') return;
+  if(e.code==='Space'){e.preventDefault();document.getElementById('btn-pause').click();}
+  if(e.code==='ArrowRight'){if(song.duration){song.currentTime=Math.min(song.duration,song.currentTime+10);lastIdx=-2;}}
+  if(e.code==='ArrowLeft'){song.currentTime=Math.max(0,song.currentTime-10);lastIdx=-2;}
 });
 
-// ════════════════════════════════════════════
-//  DRAG & DROP + FILE INPUT
-// ════════════════════════════════════════════
-document.addEventListener('dragenter', ()=>document.body.classList.add('dropping'));
-document.addEventListener('dragleave', e=>{ if(!e.relatedTarget)document.body.classList.remove('dropping'); });
-document.addEventListener('dragover', e=>e.preventDefault());
-document.addEventListener('drop', e=>{
-  e.preventDefault(); document.body.classList.remove('dropping');
-  loadFile(e.dataTransfer.files[0]);
-});
-document.getElementById('file-input').addEventListener('change',e=>{
-  loadFile(e.target.files[0]); e.target.value='';
-});
+// ═══════════════════════════════════════════════════════
+//  DRAG & DROP / FILE INPUT
+// ═══════════════════════════════════════════════════════
+document.addEventListener('dragenter',()=>document.body.classList.add('dropping'));
+document.addEventListener('dragleave',e=>{if(!e.relatedTarget)document.body.classList.remove('dropping');});
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{e.preventDefault();document.body.classList.remove('dropping');loadFile(e.dataTransfer.files[0]);});
+document.getElementById('file-input').addEventListener('change',e=>{loadFile(e.target.files[0]);e.target.value='';});
+document.addEventListener('click',()=>{if(ctx?.state==='suspended')ctx.resume();});
 
-// AudioContext resume on interaction
-document.addEventListener('click',()=>{ if(audioCtx?.state==='suspended') audioCtx.resume(); });
-
-// Init
 renderRecent();
 </script>
 </body>
