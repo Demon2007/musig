@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Let Me Down Slowly</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        background: #07071a; color: rgba(255,255,255,.92);
+        font-family: Georgia, serif; font-size: 26px;
+        display: flex; flex-direction: column;
+        justify-content: center; align-items: center;
+        height: 100vh; overflow: hidden; user-select: none;
+      }
+      canvas { position:fixed; inset:0; pointer-events:none; z-index:0; }
+      .vignette {
+        position:fixed; inset:0; pointer-events:none; z-index:1;
+        background: radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,.75) 100%);
+      }
+      #flash { position:fixed; inset:0; z-index:10; background:rgba(255,255,255,.07); pointer-events:none; opacity:0; transition:opacity .15s; }
+
+      /* ── Nav кнопка — ссылка на визуализатор ──── */
+      #nav-viz {
+        position:fixed; top:18px; left:18px; z-index:20;
+        padding:8px 18px; font:11px Georgia; letter-spacing:4px; text-transform:uppercase;
+        color:rgba(255,255,255,.3); border:1px solid rgba(255,255,255,.12);
+        text-decoration:none; background:transparent;
+        transition:color .3s, border-color .3s, box-shadow .3s;
+      }
+      #nav-viz:hover { color:rgba(255,255,255,.8); border-color:rgba(255,255,255,.4); box-shadow:0 0 14px rgba(255,255,255,.08); }
+
+      /* ── Экраны ──────────────────────────────── */
+      .screen {
+        position:relative; z-index:2; display:none;
+        flex-direction:column; align-items:center;
+        gap:16px; width:90%; max-width:700px; text-align:center;
+      }
+      .screen.on { display:flex; }
+
+      /* ── Загрузка ─────────────────────────────── */
+      #load-text {
+        font-size:13px; letter-spacing:3px; text-transform:uppercase;
+        color:rgba(255,255,255,.4); line-height:1.8; max-width:420px;
+      }
+      #load-bar-wrap { width:260px; height:2px; background:rgba(255,255,255,.1); border-radius:1px; overflow:hidden; }
+      #load-bar { height:100%; width:0; background:rgba(255,255,255,.5); transition:width .3s; }
+      #load-bar.run { width:40%; animation:slide 1.2s ease-in-out infinite; }
+      @keyframes slide { 0%{transform:translateX(-100%)} 100%{transform:translateX(350%)} }
+
+      /* ── Главный экран ────────────────────────── */
+      #status {
+        font-size:12px; letter-spacing:3px; text-transform:uppercase;
+        color:rgba(150,255,150,.65); margin-bottom:4px;
+      }
+      #status.warn { color:rgba(255,200,100,.6); }
+
+      /* ── Кнопки ───────────────────────────────── */
+      .btn {
+        padding:13px 44px; font-size:14px; letter-spacing:5px;
+        text-transform:uppercase; cursor:pointer; background:transparent;
+        font-family:Georgia,serif; transition:color .3s,border-color .3s,box-shadow .3s;
+      }
+      .btn-main { color:rgba(255,255,255,.8); border:1px solid rgba(255,255,255,.35); }
+      .btn-main:hover { color:#fff; border-color:rgba(255,255,255,.7); box-shadow:0 0 22px rgba(255,255,255,.12); }
+      .btn-sub  { color:rgba(255,255,255,.3); border:1px solid rgba(255,255,255,.12); font-size:12px; padding:9px 28px; }
+      .btn-sub:hover { color:rgba(255,255,255,.6); border-color:rgba(255,255,255,.3); }
+
+      /* ── Запись ───────────────────────────────── */
+      #rec-timer   { font-size:13px; letter-spacing:3px; color:rgba(255,255,255,.35); font-family:monospace; }
+      #rec-prog    { font-size:12px; letter-spacing:4px; color:rgba(255,255,255,.3); text-transform:uppercase; }
+      #rec-line    { font-size:28px; line-height:1.5; color:#fff; min-height:1.5em; }
+      #rec-next    { font-size:16px; color:rgba(255,255,255,.3); min-height:1.4em; }
+      #rec-hint    { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:rgba(255,255,255,.2); }
+      #rec-bar     { width:280px; height:2px; background:rgba(255,255,255,.1); border-radius:1px; overflow:hidden; }
+      #rec-fill    { height:100%; width:0; background:rgba(255,255,255,.4); transition:width .3s linear; }
+
+      /* ── Karaoke ──────────────────────────────── */
+      .lyric-line {
+        opacity:0; transform:translateY(10px); line-height:1.55;
+        transition:opacity .5s ease,transform .5s ease,font-size .5s ease,color .5s ease,text-shadow .5s ease;
+      }
+      .lyric-line.visible { opacity:1; transform:translateY(0); }
+      .lyric-line.dim     { opacity:.42; font-size:.87em; color:rgba(255,255,255,.42); }
+      .lyric-line.dimmer  { opacity:.16; font-size:.74em; color:rgba(255,255,255,.16); }
+      .lyric-line.highlight.visible {
+        color:#ff7575;
+        text-shadow:0 0 12px rgba(255,80,80,.65),0 0 28px rgba(255,80,80,.22);
+      }
+      .lyric-line.highlight.dim { color:rgba(255,110,110,.42); text-shadow:none; }
+      @keyframes down-flash {
+        0%,100%{color:rgba(255,255,255,.92);text-shadow:none}
+        50%{color:#9ab4ff;text-shadow:0 0 10px rgba(100,140,255,.5)}
+      }
+      .lyric-line.fast.visible { animation:down-flash .9s ease-in-out infinite; }
+      @keyframes please-pulse {
+        0%,100%{opacity:1;text-shadow:none} 50%{opacity:.65;text-shadow:0 0 14px rgba(255,255,255,.3)}
+      }
+      .lyric-line.please.visible { animation:please-pulse 1.8s ease-in-out infinite; }
+      .cursor {
+        display:inline-block; width:2px; height:.82em;
+        background:currentColor; margin-left:2px; vertical-align:middle;
+        animation:blink .65s step-end infinite;
+      }
+      @keyframes blink { 50%{opacity:0} }
+    </style>
+  </head>
+  <body>
+    <!-- Ссылка на визуализатор -->
+    <a id="nav-viz" href="visualizer.html">🎵 Визуализатор</a>
+
+    <!-- Фоновые холсты: частицы + аудио-аврора -->
+    <canvas id="bg"></canvas>
+    <canvas id="viz"></canvas>
+    <div class="vignette"></div>
+    <div id="flash"></div>
+
+    <div class="screen on" id="s-load">
+      <div id="load-text">Загружаем тайминги...</div>
+      <div id="load-bar-wrap"><div id="load-bar"></div></div>
+    </div>
+
+    <div class="screen" id="s-main">
+      <div id="status"></div>
+      <button class="btn btn-main" id="play-btn">ИГРАТЬ</button>
+      <button class="btn btn-sub"  id="rec-btn">Записать тайминги вручную</button>
+    </div>
+
+    <div class="screen" id="s-rec">
+      <div id="rec-timer">0:00.0</div>
+      <div id="rec-bar"><div id="rec-fill"></div></div>
+      <div id="rec-prog">Строка 1 из 46</div>
+      <div id="rec-line">—</div>
+      <div id="rec-next">—</div>
+      <div id="rec-hint">ПРОБЕЛ — отметить · BACKSPACE — отменить</div>
+    </div>
+
+    <div class="screen" id="s-kar"></div>
+
+    <audio id="song"
+      src="./musig/Alec Benjamin feat. Alessia Cara - Let Me Down Slowly (feat. Alessia Cara).mp3">
+    </audio>
+
+    <script type="module">
+      // ── Холсты ───────────────────────────────────────────
+      const cv  = document.getElementById('bg'),  cx  = cv.getContext('2d');
+      const vv  = document.getElementById('viz'), vc  = vv.getContext('2d');
+      const resize = () => {
+        cv.width = vv.width = innerWidth;
+        cv.height = vv.height = innerHeight;
+      };
+      resize(); addEventListener('resize', resize);
+
+      // ── Статичные частицы (#bg) ───────────────────────────
+      const pts = Array.from({length:60}, () => ({
+        x:Math.random()*innerWidth, y:Math.random()*innerHeight,
+        r:Math.random()*1.3+.2, vy:Math.random()*.32+.07,
+        vx:(Math.random()-.5)*.22, a:Math.random()*.42+.07,
+      }));
+      (function dp(){
+        cx.clearRect(0,0,cv.width,cv.height);
+        for(const p of pts){
+          cx.beginPath(); cx.arc(p.x,p.y,p.r,0,Math.PI*2);
+          cx.fillStyle=`rgba(155,155,215,${p.a})`; cx.fill();
+          p.y+=p.vy; p.x+=p.vx;
+          if(p.y>cv.height+4){p.y=-4;p.x=Math.random()*cv.width;}
+          if(p.x<0)p.x=cv.width; if(p.x>cv.width)p.x=0;
+        }
+        requestAnimationFrame(dp);
+      })();
+
+      // ── Аудио-визуализатор (#viz) ─────────────────────────
+      let vizAudioCtx, vizAnal, vizFreqD, vizSrc;
+      let vizHue = 220, vizEnergy = 0, vizActive = false;
+      const BBUF = new Float32Array(50); let bPtr = 0;
+      const bParts = []; // beat-частицы
+
+      function setupViz() {
+        if (vizAudioCtx) return;
+        vizAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        vizAnal = vizAudioCtx.createAnalyser();
+        vizAnal.fftSize = 1024;
+        vizAnal.smoothingTimeConstant = 0.82;
+        vizFreqD = new Uint8Array(vizAnal.frequencyBinCount);
+        vizSrc = vizAudioCtx.createMediaElementSource(song);
+        vizSrc.connect(vizAnal);
+        vizAnal.connect(vizAudioCtx.destination);
+        vizActive = true;
+      }
+
+      function vBand(lo, hi) {
+        const bins = vizAnal.frequencyBinCount;
+        const nyq  = vizAudioCtx.sampleRate / 2;
+        const s = Math.floor(lo/nyq*bins), e = Math.ceil(hi/nyq*bins);
+        let sum = 0;
+        for (let i=s;i<e;i++) sum += vizFreqD[i];
+        return sum / ((e-s) * 255);
+      }
+
+      class BPart {
+        constructor(energy) {
+          const W=vv.width, H=vv.height, CX=W/2, CY=H/2;
+          const a = Math.random()*Math.PI*2;
+          const v = (1+Math.random()*4)*(0.6+energy*2.5);
+          this.x=CX; this.y=CY;
+          this.vx=Math.cos(a)*v; this.vy=Math.sin(a)*v;
+          this.life=1; this.decay=0.009+Math.random()*0.013;
+          this.hue=vizHue+(Math.random()-0.5)*60;
+          this.r=1+Math.random()*3*energy;
+        }
+        update(){ this.x+=this.vx; this.y+=this.vy; this.vx*=.97; this.vy*=.97; this.life-=this.decay; }
+        draw(){
+          if(this.life<=0) return;
+          vc.save();
+          vc.globalAlpha=this.life*.9;
+          vc.shadowColor=`hsl(${this.hue},100%,70%)`;
+          vc.shadowBlur=6;
+          vc.fillStyle=`hsl(${this.hue},90%,65%)`;
+          vc.beginPath(); vc.arc(this.x,this.y,this.r,0,Math.PI*2); vc.fill();
+          vc.restore();
+        }
+      }
+
+      (function vizLoop(){
+        requestAnimationFrame(vizLoop);
+        if (!vizActive || !vizAnal) { vc.clearRect(0,0,vv.width,vv.height); return; }
+
+        const W=vv.width, H=vv.height, CX=W/2, CY=H/2;
+        vizAnal.getByteFrequencyData(vizFreqD);
+
+        const bass=vBand(20,250), mid=vBand(250,2000), high=vBand(2000,20000);
+        const energy=bass*.5+mid*.3+high*.2;
+        vizEnergy += (energy - vizEnergy) * .1;
+
+        const tHue = bass>mid&&bass>high ? 10+bass*35 : high>mid ? 220+high*45 : 120+mid*35;
+        vizHue += (tHue - vizHue) * .04;
+
+        // Beat detection
+        BBUF[bPtr++%50] = bass;
+        const avg = BBUF.reduce((a,b)=>a+b)/50;
+        const beat = bass > avg*1.38 && bass > 0.18;
+
+        // Trail
+        vc.fillStyle = `rgba(7,7,26,${0.22 + (1-vizEnergy)*0.1})`;
+        vc.fillRect(0,0,W,H);
+
+        // Aurora
+        const rg = vc.createRadialGradient(CX,CY,0,CX,CY,Math.max(W,H)*.7);
+        rg.addColorStop(0,   `hsla(${vizHue},70%,${8+vizEnergy*16}%,${.28+vizEnergy*.2})`);
+        rg.addColorStop(.5,  `hsla(${vizHue+60},55%,${5+vizEnergy*7}%,0.1)`);
+        rg.addColorStop(1,   'transparent');
+        vc.fillStyle=rg; vc.fillRect(0,0,W,H);
+
+        // Beat вспышка
+        if (beat) {
+          const pr = vc.createRadialGradient(CX,CY,0,CX,CY,Math.min(W,H)*.45);
+          pr.addColorStop(0, `hsla(${vizHue},80%,90%,0.1)`);
+          pr.addColorStop(1, 'transparent');
+          vc.fillStyle=pr; vc.fillRect(0,0,W,H);
+          for(let i=0;i<20+Math.floor(bass*25);i++)
+            if(bParts.length<200) bParts.push(new BPart(energy));
+        }
+        // Высокие частоты → фоновые частицы
+        if(high>0.28 && Math.random()<high*.2 && bParts.length<200)
+          bParts.push(new BPart(high*.5));
+
+        for(let i=bParts.length-1;i>=0;i--){
+          bParts[i].update(); bParts[i].draw();
+          if(bParts[i].life<=0) bParts.splice(i,1);
+        }
+      })();
+
+      // ── Тексты ───────────────────────────────────────────
+      const LY = [
+        { t:"This night is cold in the kingdom",                        s: 5.5  },
+        { t:"I can feel you fade away",                                 s: 9.5  },
+        { t:"From the kitchen to the bathroom sink and",                s:11.0  },
+        { t:"Your steps keep me awake",                                 s:15.0  },
+        { t:"Don't cut me down, throw me out, leave me here to waste",  s:18.5  },
+        { t:"I once was a man with dignity and grace",                  s:21.0  },
+        { t:"Now I'm slippin' through the cracks of your cold embrace", s:25.5  },
+        { t:"So please, please",                                        s:28.5, pl:1 },
+        { t:"Could you find a way to let me down slowly?",              s:30.0, hi:1 },
+        { t:"A little sympathy, I hope you can show me",                s:33.0, hi:1 },
+        { t:"If you wanna go then I'll be so lonely",                   s:37.5, hi:1 },
+        { t:"If you're leavin', baby, let me down slowly",              s:40.0, hi:1 },
+        { t:"Let me down, down, let me down, down, let me down",        s:43.5, fa:1 },
+        { t:"Let me down, down, let me down, down, let me down",        s:46.0, fa:1 },
+        { t:"If you wanna go then I'll be so lonely",                   s:48.5, hi:1 },
+        { t:"If you're leavin', baby, let me down slowly",              s:51.5, hi:1 },
+        { t:"Cold skin, drag my feet on the tile",                      s:55.5  },
+        { t:"As I'm walking down the corridor",                         s:59.5  },
+        { t:"And I know we haven't talked in a while",                  s:62.5  },
+        { t:"So I'm looking for an open door",                          s:66.5  },
+        { t:"Don't cut me down, throw me out, leave me here to waste",  s:69.5  },
+        { t:"I once was a man with dignity and grace",                  s:73.0  },
+        { t:"Now I'm slippin' through the cracks of your cold embrace", s:76.5  },
+        { t:"So please, please",                                        s:80.0, pl:1 },
+        { t:"Could you find a way to let me down slowly?",              s:81.5, hi:1 },
+        { t:"A little sympathy, I hope you can show me",                s:85.0, hi:1 },
+        { t:"If you wanna go then I'll be so lonely",                   s:88.5, hi:1 },
+        { t:"If you're leavin', baby, let me down slowly",              s:92.0, hi:1 },
+        { t:"Let me down, down, let me down, down, let me down",        s:95.5, fa:1 },
+        { t:"Let me down, down, let me down, down, let me down",        s:98.0, fa:1 },
+        { t:"If you wanna go then I'll be so lonely",                   s:100.5, hi:1 },
+        { t:"If you're leavin', baby, let me down slowly",              s:103.5, hi:1 },
+        { t:"And I can't stop myself from fallin' (down) down",         s:107.5 },
+        { t:"And I can't stop myself from fallin' (down) down",         s:111.0 },
+        { t:"And I can't stop myself from fallin' (down) down",         s:114.0 },
+        { t:"And I can't stop myself from fallin' (down) down",         s:117.0 },
+        { t:"Could you find a way to let me down slowly?",              s:120.0, hi:1 },
+        { t:"A little sympathy, I hope you can show me",                s:123.5, hi:1 },
+        { t:"If you wanna go then I'll be so lonely",                   s:127.0, hi:1 },
+        { t:"If you're leavin', baby, let me down slowly",              s:130.5, hi:1 },
+        { t:"Let me down, down, let me down, down, let me down",        s:134.0, fa:1 },
+        { t:"Let me down, down, let me down, down, let me down",        s:136.5, fa:1 },
+        { t:"If you wanna go then I'll be so lonely",                   s:139.0, hi:1 },
+        { t:"If you're leavin', baby, let me down slowly",              s:142.0, hi:1 },
+        { t:"If you wanna go then I'll be so lonely",                   s:146.0, hi:1 },
+        { t:"If you're leavin', baby, let me down slowly",              s:149.5, hi:1 },
+      ];
+
+      const song = document.getElementById('song');
+
+      // ── UI helpers ────────────────────────────────────────
+      const show = id => {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('on'));
+        document.getElementById(id).classList.add('on');
+      };
+      const setLoadText = t  => document.getElementById('load-text').textContent = t;
+      const setBar = pct => {
+        const b = document.getElementById('load-bar');
+        if (pct === null) { b.style.width=''; b.classList.add('run'); }
+        else              { b.classList.remove('run'); b.style.width = pct + '%'; }
+      };
+
+      // ── Нормализация ──────────────────────────────────────
+      const norm = s => s.toLowerCase().replace(/[''`]/g,'').replace(/[^a-z0-9 ]/g,'').replace(/\s+/g,' ').trim();
+
+      // ── 1. lrclib.net ─────────────────────────────────────
+      function parseLRC(raw) {
+        return raw.trim().split('\n').map(line => {
+          const m = line.match(/^\[(\d+):(\d{2}[.,]\d+)\]\s*(.*)/);
+          if (!m || !m[3].trim()) return null;
+          return { s: parseInt(m[1])*60 + parseFloat(m[2].replace(',','.')), t: m[3].trim() };
+        }).filter(Boolean);
+      }
+
+      function applyLRC(lines) {
+        let pos = 0, hit = 0;
+        for (const ly of LY) {
+          const key = norm(ly.t).split(' ').slice(0,4).join(' ');
+          let best = -1, bestDist = 99;
+          for (let i = pos; i < lines.length; i++) {
+            const cand = norm(lines[i].t).split(' ').slice(0,4).join(' ');
+            // count matching word-prefixes (first 5 chars)
+            const score = key.split(' ').filter((w,k) => cand.split(' ')[k]?.slice(0,5) === w.slice(0,5)).length;
+            const dist  = Math.abs(lines[i].s - ly.s);
+            if (score >= 2 && dist < bestDist) { bestDist = dist; best = i; }
+          }
+          if (best >= 0) { ly.s = lines[best].s; pos = best; hit++; }
+        }
+        return hit;
+      }
+
+      async function tryLrclib() {
+        try {
+          const ac = new AbortController();
+          setTimeout(() => ac.abort(), 5000);
+          const r = await fetch(
+            `https://lrclib.net/api/get?artist_name=Alec+Benjamin&track_name=Let+Me+Down+Slowly`,
+            { signal: ac.signal }
+          );
+          if (!r.ok) return 0;
+          const d = await r.json();
+          if (!d.syncedLyrics) return 0;
+          return applyLRC(parseLRC(d.syncedLyrics));
+        } catch { return 0; }
+      }
+
+      // ── 2. Whisper via transformers.js ────────────────────
+      function applyWhisper(chunks) {
+        let pos = 0;
+        for (const ly of LY) {
+          const words = norm(ly.t).split(' ').slice(0,3);
+          let best = -1;
+          for (let i = pos; i < chunks.length - words.length; i++) {
+            let score = 0;
+            for (let w = 0; w < words.length; w++) {
+              const cw = norm(chunks[i+w]?.text || '');
+              const tw = words[w];
+              if (cw === tw) score += 2;
+              else if (cw.length > 3 && tw.length > 3 && cw.slice(0,4) === tw.slice(0,4)) score++;
+            }
+            if (score >= Math.min(words.length, 3)) { best = i; break; }
+          }
+          if (best >= 0 && chunks[best].timestamp?.[0] != null) {
+            ly.s = parseFloat(chunks[best].timestamp[0].toFixed(2));
+            pos = best + 1;
+          }
+        }
+      }
+
+      async function tryWhisper() {
+        // Audio must be fetchable (needs local HTTP server, e.g. VS Code Live Server)
+        const ok = await fetch(song.src, {method:'HEAD'}).then(r=>r.ok).catch(()=>false);
+        if (!ok) return false;
+
+        setLoadText('Загружаю AI-модель Whisper\n(первый раз ~40 МБ, потом кэш)...');
+        setBar(0);
+
+        const { pipeline, env } = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+        env.allowLocalModels = false;
+        env.useBrowserCache  = true;
+
+        const asr = await pipeline(
+          'automatic-speech-recognition',
+          'Xenova/whisper-tiny.en',
+          {
+            progress_callback: p => {
+              if (p.status === 'progress' && p.total)
+                setBar(Math.round(p.loaded / p.total * 100));
+              else if (p.status === 'done')
+                setBar(100);
+            }
+          }
+        );
+
+        setLoadText('Анализирую аудио\n(~1 минута, только один раз)...');
+        setBar(null);
+
+        const result = await asr(song.src, {
+          return_timestamps: 'word',
+          chunk_length_s: 30,
+          language: 'english',
+        });
+
+        if (!result.chunks?.length) return false;
+        applyWhisper(result.chunks);
+        // Save so next time we skip Whisper
+        localStorage.setItem('karaoke_timings', JSON.stringify(LY.map(l => l.s)));
+        return true;
+      }
+
+      // ── Сохранённые тайминги ──────────────────────────────
+      function loadSaved() {
+        const raw = localStorage.getItem('karaoke_timings');
+        if (!raw) return false;
+        const arr = JSON.parse(raw);
+        if (arr.length !== LY.length) return false;
+        LY.forEach((l,i) => { l.s = arr[i]; });
+        return true;
+      }
+
+      // ── Главный поток ─────────────────────────────────────
+      async function init() {
+        const st = document.getElementById('status');
+
+        setLoadText('Ищем тайминги в базе данных...'); setBar(0);
+        const lrcHit = await tryLrclib();
+        if (lrcHit >= LY.length * 0.7) {
+          st.textContent = `✓ Тайминги загружены из lrclib.net (${lrcHit}/${LY.length} строк)`;
+          show('s-main'); return;
+        }
+
+        if (loadSaved()) {
+          st.textContent = '✓ Используются ваши сохранённые тайминги';
+          show('s-main'); return;
+        }
+
+        const whisperOk = await tryWhisper();
+        if (whisperOk) {
+          st.textContent = '✓ Тайминги определены через Whisper AI';
+          show('s-main'); return;
+        }
+
+        st.textContent = '⚠ Используются примерные тайминги — для точности запишите вручную';
+        st.className = 'warn';
+        show('s-main');
+      }
+
+      // ── Tap-рекордер ──────────────────────────────────────
+      let tapI = 0, tapT = [];
+
+      function updateRec() {
+        document.getElementById('rec-prog').textContent = `Строка ${tapI+1} из ${LY.length}`;
+        document.getElementById('rec-line').textContent = tapI < LY.length ? LY[tapI].t : '✓ Готово!';
+        document.getElementById('rec-next').textContent = tapI+1 < LY.length ? `→ ${LY[tapI+1].t}` : '';
+      }
+
+      function startRec() {
+        tapI = 0; tapT = [];
+        show('s-rec'); updateRec();
+        setupViz();
+        song.currentTime = 0; song.play();
+        (function tick(){
+          if (tapI < LY.length) {
+            const t = song.currentTime;
+            document.getElementById('rec-timer').textContent =
+              `${Math.floor(t/60)}:${(t%60).toFixed(1).padStart(4,'0')}`;
+            document.getElementById('rec-fill').style.width =
+              (t / (song.duration||1) * 100) + '%';
+            requestAnimationFrame(tick);
+          }
+        })();
+        document.addEventListener('keydown', onTap);
+      }
+
+      function onTap(e) {
+        if (e.code === 'Space') {
+          e.preventDefault();
+          if (tapI >= LY.length) return;
+          tapT.push(parseFloat(song.currentTime.toFixed(2)));
+          const fl = document.getElementById('flash');
+          fl.style.opacity = '1'; setTimeout(() => fl.style.opacity = '0', 150);
+          if (++tapI >= LY.length) {
+            document.removeEventListener('keydown', onTap);
+            localStorage.setItem('karaoke_timings', JSON.stringify(tapT));
+            LY.forEach((l,i) => { l.s = tapT[i]; });
+            song.pause(); song.currentTime = 0;
+            startKaraoke();
+          } else updateRec();
+        } else if (e.code === 'Backspace' && tapI > 0) {
+          e.preventDefault(); tapI--; tapT.pop(); updateRec();
+        }
+      }
+
+      // ── Karaoke ───────────────────────────────────────────
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+      async function typeLine(el, text, speed) {
+        const cur = document.createElement('span');
+        cur.className = 'cursor'; el.appendChild(cur);
+        for (const ch of text) { cur.insertAdjacentText('beforebegin', ch); await sleep(speed); }
+        cur.remove();
+      }
+
+      let activeLines = [];
+
+      function spawn(obj, speed) {
+        activeLines.forEach((el, i) => {
+          el.classList.remove('visible','dim','dimmer');
+          el.classList.add(i === activeLines.length-1 ? 'dim' : 'dimmer');
+        });
+        if (activeLines.length >= 3) {
+          const old = activeLines.shift();
+          old.style.transition = 'opacity .4s'; old.style.opacity = '0';
+          setTimeout(() => old.remove(), 450);
+        }
+        const el = document.createElement('div');
+        let cls = 'lyric-line';
+        if (obj.hi) cls += ' highlight';
+        if (obj.pl) cls += ' please';
+        if (obj.fa) cls += ' fast';
+        el.className = cls;
+        document.getElementById('s-kar').appendChild(el);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          el.classList.add('visible');
+          typeLine(el, obj.t, speed);
+        }));
+        activeLines.push(el);
+      }
+
+      function startKaraoke() {
+        document.getElementById('s-kar').innerHTML = '';
+        activeLines = [];
+        show('s-kar');
+        setupViz();
+        song.currentTime = 0; song.play();
+
+        const sched = LY.map((l,i) => {
+          const next  = LY[i+1]?.s ?? l.s + 4;
+          const speed = Math.max(22, Math.floor((next - l.s) * 800 / l.t.length));
+          return { ...l, speed };
+        });
+
+        const done = new Set();
+        (function tick(){
+          const t = song.currentTime;
+          for (let i = 0; i < sched.length; i++) {
+            if (!done.has(i) && t >= sched[i].s) { done.add(i); spawn(sched[i], sched[i].speed); }
+          }
+          if (done.size < sched.length) requestAnimationFrame(tick);
+        })();
+      }
+
+      // ── Кнопки ────────────────────────────────────────────
+      document.getElementById('play-btn').addEventListener('click', startKaraoke);
+      document.getElementById('rec-btn').addEventListener('click', startRec);
+
+      init();
+    </script>
+  </body>
+</html>
