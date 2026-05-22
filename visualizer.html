@@ -642,9 +642,12 @@ function parseLRC(raw) {
 function plainToTimed(plain, duration) {
   const lines = plain.split('\n').map(l=>l.trim()).filter(l=>l&&!/^\[/.test(l));
   if (!lines.length) return [];
-  const pad = Math.min(duration*.04, 4);
-  const step = Math.max(duration - pad*2, duration*.85) / lines.length;
-  return lines.map((t,i) => ({ t, s: pad+i*step, approx: true }));
+  // Вокал обычно начинается после ~8% длины (интро), заканчивается за ~5% до конца
+  const startAt  = duration * 0.08;
+  const endAt    = duration * 0.93;
+  const usable   = endAt - startAt;
+  const step     = usable / lines.length;
+  return lines.map((t, i) => ({ t, s: startAt + i * step, approx: true }));
 }
 
 async function fetchJson(url, ms=9000) {
@@ -728,12 +731,32 @@ function applyLine(el, obj, cls) {
 
 function updateLyrics(ct) {
   if (!lyrics.length) return;
-  let idx=0;
-  for (let i=0;i<lyrics.length;i++) { if (ct>=lyrics[i].s) idx=i; else break; }
-  if (idx===lastIdx) return; lastIdx=idx;
-  applyLine(elPrev, lyrics[idx-1]||null, 'prev');
-  applyLine(elCur,  lyrics[idx]||null,   'cur');
-  applyLine(elNxt,  lyrics[idx+1]||null, 'nxt');
+
+  // До первой строки — ничего не показываем
+  if (ct < lyrics[0].s) {
+    if (lastIdx !== -1) {
+      lastIdx = -1;
+      elPrev.className = 'lline hidden'; elPrev.textContent = '';
+      elCur.className  = 'lline hidden'; elCur.textContent  = '';
+      elNxt.className  = 'lline hidden'; elNxt.textContent  = '';
+    }
+    return;
+  }
+
+  // Бинарный поиск: найти последнюю строку с s <= ct
+  let lo = 0, hi = lyrics.length - 1, idx = 0;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (lyrics[mid].s <= ct) { idx = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+
+  if (idx === lastIdx) return;
+  lastIdx = idx;
+
+  applyLine(elPrev, lyrics[idx - 1] || null, 'prev');
+  applyLine(elCur,  lyrics[idx]     || null, 'cur');
+  applyLine(elNxt,  lyrics[idx + 1] || null, 'nxt');
 }
 
 (function lyricsLoop(){
