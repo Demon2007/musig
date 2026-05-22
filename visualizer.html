@@ -209,32 +209,16 @@
     #no-lyrics:hover { color:rgba(255,255,255,.65); }
     #no-lyrics.show { display:block; }
 
-    /* ═══ СИНХРОНИЗАЦИЯ ══════════════════════= */
-    #sync-bar {
+    /* ═══ ИНДИКАТОР СИНХРОНИЗАЦИИ ═══════════= */
+    #sync-status {
       position:fixed; bottom:50px; left:50%; transform:translateX(-50%);
-      z-index:22; display:none; align-items:center; gap:0;
-      background:rgba(0,0,0,.7); border:1px solid rgba(255,255,255,.12);
-      backdrop-filter:blur(8px); padding:6px 4px;
-    }
-    #sync-bar.show { display:flex; }
-    .sync-btn {
-      width:32px; height:32px; font-size:15px; line-height:32px; text-align:center;
-      background:transparent; border:none; color:rgba(255,255,255,.55);
-      cursor:pointer; transition:color .2s; user-select:none;
-    }
-    .sync-btn:hover { color:#fff; }
-    #sync-val {
-      min-width:62px; text-align:center; font-size:11px; letter-spacing:2px;
-      color:rgba(255,255,255,.7); padding:0 4px;
-    }
-    #sync-val.zero { color:rgba(255,255,255,.3); }
-    #sync-hint {
-      position:fixed; bottom:90px; left:50%; transform:translateX(-50%);
       z-index:22; font-size:10px; letter-spacing:3px; text-transform:uppercase;
-      color:rgba(255,255,255,.25); white-space:nowrap; pointer-events:none;
-      opacity:0; transition:opacity .4s;
+      color:rgba(255,255,255,.3); white-space:nowrap; pointer-events:none;
+      opacity:0; transition:opacity .5s;
     }
-    #sync-hint.show { opacity:1; }
+    #sync-status.show { opacity:1; }
+    @keyframes sync-pulse { 0%,100%{opacity:.3} 50%{opacity:.8} }
+    #sync-status.active { animation:sync-pulse 1.4s ease-in-out infinite; }
 
     /* ═══ МОБИЛКА ════════════════════════════= */
     @media (max-width:600px) {
@@ -320,13 +304,8 @@
 <div id="fetch-status"></div>
 <div id="no-lyrics" onclick="openSearch()">🔍 Найти текст</div>
 
-<!-- ── Синхронизация текста ──────────────── -->
-<div id="sync-bar">
-  <button class="sync-btn" id="sync-minus" title="Текст раньше (←)">◀</button>
-  <div id="sync-val" class="zero">± 0.0 с</div>
-  <button class="sync-btn" id="sync-plus"  title="Текст позже (→)">▶</button>
-</div>
-<div id="sync-hint">◀ ▶ — синхронизация</div>
+<!-- ── Статус автосинхронизации ───────────── -->
+<div id="sync-status"></div>
 
 <!-- ── Топбар ────────────────────────────────── -->
 <div id="topbar">
@@ -740,37 +719,119 @@ async function fetchLRC(artist, title) {
 }
 
 // ════════════════════════════════════════════
-//  СИНХРОНИЗАЦИЯ (смещение в секундах)
+//  АВТОСИНХРОНИЗАЦИЯ — анализ аудио
 // ════════════════════════════════════════════
-let syncOffset = 0;   // > 0 → текст раньше;  < 0 → текст позже
+let currentFile = null;  // сохраняем File для анализа
 
-function loadSyncOffset(key) {
-  try { syncOffset = parseFloat(localStorage.getItem('sync_' + key) || '0') || 0; } catch { syncOffset = 0; }
-  renderSyncVal();
-}
-function saveSyncOffset(key) {
-  try { localStorage.setItem('sync_' + key, syncOffset.toFixed(1)); } catch {}
-}
-function renderSyncVal() {
-  const el = document.getElementById('sync-val');
-  const s = syncOffset.toFixed(1);
-  el.textContent = syncOffset > 0 ? `+${s} с` : syncOffset < 0 ? `${s} с` : '± 0.0 с';
-  el.className = syncOffset === 0 ? 'zero' : '';
-}
-function changeSyncOffset(delta) {
-  syncOffset = Math.round((syncOffset + delta) * 10) / 10;
-  syncOffset = Math.max(-5, Math.min(5, syncOffset));
-  renderSyncVal();
-  lastIdx = -2;  // пересчитать текущую строку
-  saveSyncOffset(currentArtist + '_' + currentTitle);
-  // Показать подсказку
-  const hint = document.getElementById('sync-hint');
-  hint.classList.add('show');
-  clearTimeout(hint._t); hint._t = setTimeout(() => hint.classList.remove('show'), 1800);
+function showSyncStatus(msg, active = false) {
+  const el = document.getElementById('sync-status');
+  el.textContent = msg;
+  el.className = 'show' + (active ? ' active' : '');
+  clearTimeout(el._t);
+  if (!active) el._t = setTimeout(() => el.classList.remove('show'), 3500);
 }
 
-document.getElementById('sync-minus').addEventListener('click', () => changeSyncOffset(+0.2));
-document.getElementById('sync-plus').addEventListener('click',  () => changeSyncOffset(-0.2));
+// Декодируем аудио во временный буфер (отдельный от плеера контекст)
+async function decodeAudioBuffer(file) {
+  const ab = await file.arrayBuffer();
+  const tmp = new (window.AudioContext || window.webkitAudioContext)();
+  try {
+    return await tmp.decodeAudioData(ab);
+  } finally {
+    tmp.close();
+  }
+}
+
+// Фильтруем аудио в вокальном диапазоне через OfflineAudioContext
+// (нативный DSP, быстро — 2-4с на 3-минутную песню)
+async function computeVocalOnsets(buf) {
+  const sr = buf.sampleRate;
+
+  // OfflineAudioContext: рендерим только вокальный диапазон 280–3600 Гц
+  const offCtx = new OfflineAudioContext(1, buf.length, sr);
+  const src = offCtx.createBufferSource();
+  src.buffer = buf;
+
+  // Highpass 280 Гц — срезаем бас и удары
+  const hp = offCtx.createBiquadFilter();
+  hp.type = 'highpass'; hp.frequency.value = 280; hp.Q.value = 0.9;
+
+  // Lowpass 3600 Гц — срезаем высокочастотные шипелки
+  const lp = offCtx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 3600; lp.Q.value = 0.9;
+
+  src.connect(hp); hp.connect(lp); lp.connect(offCtx.destination);
+  src.start(0);
+
+  const filtered = await offCtx.startRendering();
+  const pcm = filtered.getChannelData(0);
+
+  // RMS-огибающая в окнах по 10 мс → onset strength
+  const HOP = Math.floor(sr * 0.01);   // 10 мс
+  const WIN = HOP * 3;                  // 30 мс окно
+  const nF  = Math.floor((pcm.length - WIN) / HOP);
+  const rms = new Float32Array(nF);
+
+  for (let i = 0; i < nF; i++) {
+    let s = 0, b = i * HOP;
+    for (let j = 0; j < WIN; j++) s += pcm[b + j] * pcm[b + j];
+    rms[i] = Math.sqrt(s / WIN);
+  }
+
+  // Onset = положительный прирост log-RMS (аналог спектрального flux)
+  const logRms   = rms.map(v => Math.log1p(v * 80));
+  const strength = new Float32Array(nF);
+  for (let i = 5; i < nF; i++) {
+    strength[i] = Math.max(0, logRms[i] - logRms[i - 5]);
+  }
+
+  return { strength, fps: 100 };  // 100 кадров/сек
+}
+
+// Привязываем каждый LRC-таймстемп к ближайшему вокальному онсету
+function snapToOnsets(lines, onsetData, maxShift = 1.2) {
+  const { strength, fps } = onsetData;
+  const WIN = Math.floor(maxShift * fps);
+
+  const aligned = lines.map((line, li) => {
+    const center = Math.round(line.s * fps);
+    // Не уходить раньше предыдущей строки
+    const minF = li > 0 ? Math.round(lines[li - 1].s * fps) + Math.floor(0.1 * fps) : 0;
+    const lo   = Math.max(minF, center - WIN);
+    const hi   = Math.min(strength.length - 1, center + WIN);
+
+    let best = center, bestVal = -1;
+    for (let f = lo; f <= hi; f++) {
+      if (strength[f] > bestVal) { bestVal = strength[f]; best = f; }
+    }
+
+    // Только снапаем если онсет достаточно значимый
+    return bestVal > 0.01 ? { ...line, s: best / fps } : line;
+  });
+
+  // Проверка: если медианный сдвиг > 2с — анализ провалился, возвращаем оригинал
+  const shifts = aligned.map((a, i) => Math.abs(a.s - lines[i].s));
+  shifts.sort((a, b) => a - b);
+  const median = shifts[Math.floor(shifts.length / 2)];
+  return median > 2.0 ? lines : aligned;
+}
+
+// Главная функция авто-синхронизации
+async function autoSync(file, lines) {
+  if (!lines.length || !file) return lines;
+  showSyncStatus('🎵 Анализирую аудио…', true);
+  try {
+    const buf      = await decodeAudioBuffer(file);
+    const onsets   = await computeVocalOnsets(buf);
+    const result   = snapToOnsets(lines, onsets);
+    showSyncStatus('✓ Синхронизировано');
+    return result;
+  } catch (err) {
+    console.warn('autoSync:', err);
+    showSyncStatus('');
+    return lines;  // fallback — оригинальные таймстемпы
+  }
+}
 
 // ════════════════════════════════════════════
 //  ОТОБРАЖЕНИЕ ТЕКСТА
@@ -800,12 +861,8 @@ function applyLine(el, obj, cls) {
 function updateLyrics(ct) {
   if (!lyrics.length) return;
 
-  // Применяем смещение синхронизации:
-  // syncOffset > 0 → сдвигаем ct вперёд → текст появляется раньше
-  const t = ct + syncOffset;
-
   // До первой строки — ничего не показываем
-  if (t < lyrics[0].s) {
+  if (ct < lyrics[0].s) {
     if (lastIdx !== -1) {
       lastIdx = -1;
       elPrev.className='lline hidden'; elPrev.textContent='';
@@ -815,11 +872,11 @@ function updateLyrics(ct) {
     return;
   }
 
-  // Бинарный поиск: последняя строка где s <= t
+  // Бинарный поиск: последняя строка где s <= ct
   let lo=0, hi=lyrics.length-1, idx=0;
   while (lo<=hi) {
     const mid=(lo+hi)>>1;
-    if (lyrics[mid].s<=t) { idx=mid; lo=mid+1; }
+    if (lyrics[mid].s<=ct) { idx=mid; lo=mid+1; }
     else hi=mid-1;
   }
 
@@ -878,6 +935,7 @@ async function loadFile(file) {
     alert('Выбери аудиофайл (mp3, ogg, wav, flac …)'); return;
   }
 
+  currentFile = file;   // сохраняем для авто-синхронизации
   const url = URL.createObjectURL(file);
   setupAudio(url);
 
@@ -889,10 +947,6 @@ async function loadFile(file) {
   document.getElementById('topbar').classList.add('show');
   document.getElementById('time-display').classList.add('show');
 
-  // Загрузить смещение синхронизации для этого трека
-  loadSyncOffset(artist + '_' + title);
-  document.getElementById('sync-bar').classList.add('show');
-
   const up = document.getElementById('upload');
   up.classList.add('fade'); setTimeout(()=>up.style.display='none',700);
 
@@ -900,36 +954,48 @@ async function loadFile(file) {
   document.getElementById('no-lyrics').classList.remove('show');
   document.getElementById('btn-lyrics').classList.remove('active');
 
-  // Начальное настроение из имени файла
-  const m = moodFromText(displayName);
-  setMood(m, true);
+  setMood(moodFromText(displayName), true);
 
   showStatus('Ищу текст песни…');
   const result = await fetchLRC(artist, title);
 
   if (result && result.synced) {
-    lyrics = parseLRC(result.text);
-    detectChorus(lyrics);
-    // Настроение из текста
-    const allText = lyrics.map(l=>l.t).join(' ');
-    setMood(moodFromText(allText));
+    // ─── Синхронизированный LRC ─────────────
+    const rawLines = parseLRC(result.text);
+    detectChorus(rawLines);
+    setMood(moodFromText(rawLines.map(l=>l.t).join(' ')));
+    lyrics = rawLines;
     setLyricsVisible(true);
     document.getElementById('btn-lyrics').classList.add('active');
-    showStatus(`✓ Текст найден — ${lyrics.length} строк`, 3500);
+    showStatus(`✓ Текст найден — синхронизирую…`);
+
+    // Авто-синхронизация в фоне пока песня уже играет
+    autoSync(file, rawLines).then(aligned => {
+      if (currentFile === file) {   // всё ещё та же песня
+        Object.assign(lyrics, aligned);  // обновляем in-place
+        lastIdx = -2;
+      }
+    });
 
   } else if (result && !result.synced) {
-    showStatus('Текст найден, подготавливаю…');
-    const allText = result.text;
-    setMood(moodFromText(allText));
-    function applyPlain() {
-      if (!song.duration || song.duration<1) return false;
-      lyrics = plainToTimed(allText, song.duration);
-      detectChorus(lyrics); setLyricsVisible(true);
-      document.getElementById('btn-lyrics').classList.add('active');
-      showStatus(`✓ Текст найден (приблизительная синхронизация)`, 4000);
-      return true;
+    // ─── Обычный текст — авто-тайминг + синхронизация ──
+    showStatus('Текст найден, синхронизирую…');
+    setMood(moodFromText(result.text));
+
+    async function applyPlain() {
+      const dur = song.duration > 1 ? song.duration : await new Promise(res => {
+        song.addEventListener('loadedmetadata', () => res(song.duration), { once: true });
+      });
+      const timed = plainToTimed(result.text, dur);
+      detectChorus(timed);
+      // Синхронизируем plain тоже
+      const aligned = await autoSync(file, timed);
+      if (currentFile === file) {
+        lyrics = aligned; setLyricsVisible(true);
+        document.getElementById('btn-lyrics').classList.add('active');
+      }
     }
-    if (!applyPlain()) song.addEventListener('loadedmetadata', function onM(){ song.removeEventListener('loadedmetadata',onM); applyPlain(); });
+    applyPlain();
 
   } else {
     showStatus('Текст не найден', 4000);
@@ -1026,12 +1092,11 @@ document.getElementById('btn-new').addEventListener('click',()=>{
   document.getElementById('no-lyrics').classList.remove('show');
   document.getElementById('topbar').classList.remove('show');
   document.getElementById('time-display').classList.remove('show');
-  document.getElementById('sync-bar').classList.remove('show');
   document.getElementById('progress-fill').style.width='0%';
   document.getElementById('btn-pause').textContent='⏸ Пауза';
   document.getElementById('btn-lyrics').classList.remove('active');
   if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl=null; }
-  syncOffset=0; renderSyncVal();
+  currentFile = null;
   setMood('neutral', true);
   const up = document.getElementById('upload');
   up.style.display=''; requestAnimationFrame(()=>up.classList.remove('fade'));
@@ -1052,11 +1117,8 @@ pw.addEventListener('touchmove', e=>{e.preventDefault();seekTo(e.touches[0].clie
 document.addEventListener('keydown',e=>{
   if (e.target.tagName==='INPUT') return;
   if (e.code==='Space')        { e.preventDefault(); document.getElementById('btn-pause').click(); }
-  if (e.code==='ArrowRight')   { if(song.duration){song.currentTime=Math.min(song.duration,song.currentTime+10);lastIdx=-2;} }
-  if (e.code==='ArrowLeft')    { song.currentTime=Math.max(0,song.currentTime-10);lastIdx=-2; }
-  // Синхронизация: [ = текст раньше, ] = текст позже
-  if (e.code==='BracketLeft')  { e.preventDefault(); changeSyncOffset(+0.2); }
-  if (e.code==='BracketRight') { e.preventDefault(); changeSyncOffset(-0.2); }
+  if (e.code==='ArrowRight') { if(song.duration){song.currentTime=Math.min(song.duration,song.currentTime+10);lastIdx=-2;} }
+  if (e.code==='ArrowLeft')  { song.currentTime=Math.max(0,song.currentTime-10);lastIdx=-2; }
 });
 
 // ════════════════════════════════════════════
