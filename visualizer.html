@@ -320,8 +320,11 @@ function ensureGraph(){
 function setupAudio(url){
   if(currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
   currentBlobUrl=url; ensureGraph();
-  if(ctx.state==='suspended') ctx.resume();
-  song.src=url; song.play().catch(()=>{});
+  song.src=url;
+  // ctx.resume() is async — chain play() AFTER it resolves so audio actually comes out
+  (ctx.state!=='running' ? ctx.resume() : Promise.resolve())
+    .catch(()=>{})
+    .then(()=>song.play().catch(()=>{}));
 }
 song.addEventListener('ended',()=>document.getElementById('btn-pause').textContent='▶ Играть');
 
@@ -1092,9 +1095,11 @@ document.getElementById('skip-btn').addEventListener('click',()=>document.getEle
 // ═══════════════════════════════════════════════════════
 document.getElementById('btn-pause').addEventListener('click',()=>{
   if(!currentBlobUrl) return;
-  if(ctx?.state==='suspended') ctx.resume();
-  if(song.paused){song.play().catch(()=>{});document.getElementById('btn-pause').textContent='⏸ Пауза';}
-  else{song.pause();document.getElementById('btn-pause').textContent='▶ Играть';}
+  const toggle=()=>{
+    if(song.paused){song.play().catch(()=>{});document.getElementById('btn-pause').textContent='⏸ Пауза';}
+    else{song.pause();document.getElementById('btn-pause').textContent='▶ Играть';}
+  };
+  if(ctx?.state!=='running'){ctx?.resume().catch(()=>{}).then(toggle);}else{toggle();}
 });
 
 document.getElementById('btn-lyrics').addEventListener('click',()=>{
