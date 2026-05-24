@@ -239,6 +239,7 @@ const CBL = document.getElementById('c-bloom'),bl = CBL.getContext('2d');
 const COF = document.createElement('canvas'),  of = COF.getContext('2d');
 const WVC = document.getElementById('wv-canvas');
 let W,H,CX,CY;
+let wvData=null,wvLastDraw=0;
 
 function resize(){
   W=CBG.width=CFX.width=CBL.width=innerWidth;
@@ -693,8 +694,6 @@ function vizFrame(bass,mid,high,energy,beat){
 // ═══════════════════════════════════════════════════════
 //  WAVEFORM OVERVIEW BAR
 // ═══════════════════════════════════════════════════════
-let wvData=null,wvLastDraw=0;
-
 function drawWaveformBar(force=false){
   const now=performance.now();
   if(!force&&wvData&&now-wvLastDraw<80) return; // ~12 fps max
