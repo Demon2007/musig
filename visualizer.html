@@ -308,19 +308,31 @@ const song=document.getElementById('song');
 let ctx=null,analyser=null,srcNode=null,freqD=null,waveD=null,currentBlobUrl=null,currentFile=null;
 
 function ensureGraph(){
-  if(ctx) return;
-  ctx=new(window.AudioContext||window.webkitAudioContext)();
-  analyser=ctx.createAnalyser();
-  analyser.fftSize=2048; analyser.smoothingTimeConstant=0.82;
-  freqD=new Uint8Array(analyser.frequencyBinCount);
-  waveD=new Uint8Array(analyser.fftSize);
-  srcNode=ctx.createMediaElementSource(song);
-  srcNode.connect(analyser); analyser.connect(ctx.destination);
+  if(ctx) return true;
+  try{
+    ctx=new(window.AudioContext||window.webkitAudioContext)();
+    analyser=ctx.createAnalyser();
+    analyser.fftSize=2048; analyser.smoothingTimeConstant=0.82;
+    freqD=new Uint8Array(analyser.frequencyBinCount);
+    waveD=new Uint8Array(analyser.fftSize);
+    srcNode=ctx.createMediaElementSource(song);
+    srcNode.connect(analyser); analyser.connect(ctx.destination);
+    return true;
+  }catch(e){
+    console.error('AudioContext init failed:',e);
+    ctx=null; return false;
+  }
 }
 function setupAudio(url){
   if(currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-  currentBlobUrl=url; ensureGraph();
+  currentBlobUrl=url;
+  const hasCtx=ensureGraph();
   song.src=url;
+  if(!hasCtx){
+    // No AudioContext (blocked by browser) — play directly without visualizer
+    song.play().catch(()=>{});
+    return;
+  }
   // ctx.resume() is async — chain play() AFTER it resolves so audio actually comes out
   (ctx.state!=='running' ? ctx.resume() : Promise.resolve())
     .catch(()=>{})
@@ -967,9 +979,18 @@ function showFetch(msg,delay=4500){
 
 async function loadFile(file){
   if(!file) return;
-  if(!file.type.startsWith('audio/')&&!/\.(mp3|ogg|wav|flac|m4a|aac|opus)$/i.test(file.name)){
-    alert('Выбери аудиофайл (mp3, wav, flac …)'); return;
+
+  // Accept audio/* MIME or any common audio extension (extended list)
+  const knownExt=/\.(mp3|ogg|wav|flac|m4a|aac|opus|wma|aiff|aif|ape|webm|caf)$/i;
+  if(!file.type.startsWith('audio/')&&!file.type.startsWith('video/webm')&&!knownExt.test(file.name)){
+    alert('Выбери аудиофайл (mp3, wav, flac, m4a, aac …)'); return;
   }
+
+  // Always hide upload screen first — even if something below fails
+  const up=document.getElementById('upload');
+  up.classList.add('fade'); setTimeout(()=>up.style.display='none',750);
+
+  try{
   currentFile=file;
   setupAudio(URL.createObjectURL(file));
 
@@ -980,9 +1001,6 @@ async function loadFile(file){
   document.getElementById('track-title').textContent=dn;
   document.getElementById('topbar').classList.add('show');
   document.getElementById('time-d').classList.add('show');
-
-  const up=document.getElementById('upload');
-  up.classList.add('fade'); setTimeout(()=>up.style.display='none',750);
 
   lyrics=[]; lastIdx=-2; setLyricsVisible(false);
   document.getElementById('no-lrc').classList.remove('show');
@@ -1034,6 +1052,10 @@ async function loadFile(file){
     }
   }
   saveRecent(file.name,artist,title);
+  }catch(e){
+    console.error('loadFile error:',e);
+    showFetch('Ошибка загрузки: '+e.message,6000);
+  }
 }
 
 // ═══════════════════════════════════════════════════════
