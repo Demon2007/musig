@@ -229,17 +229,13 @@ body.dropping #upload{border:2px solid rgba(140,140,255,.4)}
 
 <script>
 'use strict';
-
-// ═══════════════════════════════════════════════════════
-//  CANVAS SETUP
-// ═══════════════════════════════════════════════════════
-const CBG = document.getElementById('c-bg'),   bg = CBG.getContext('2d');
-const CFX = document.getElementById('c-fx'),   fx = CFX.getContext('2d');
-const CBL = document.getElementById('c-bloom'),bl = CBL.getContext('2d');
-const COF = document.createElement('canvas'),  of = COF.getContext('2d');
-const WVC = document.getElementById('wv-canvas');
-let W,H,CX,CY;
-let wvData=null,wvLastDraw=0;
+// ── Canvas ──────────────────────────────────────────────
+const CBG=document.getElementById('c-bg'),bg=CBG.getContext('2d');
+const CFX=document.getElementById('c-fx'),fx=CFX.getContext('2d');
+const CBL=document.getElementById('c-bloom'),bl=CBL.getContext('2d');
+const COF=document.createElement('canvas'),of=COF.getContext('2d');
+const WVC=document.getElementById('wv-canvas');
+let W,H,CX,CY,wvData=null,wvLastDraw=0;
 
 function resize(){
   W=CBG.width=CFX.width=CBL.width=innerWidth;
@@ -302,14 +298,13 @@ function moodFromText(t=''){
   return best[0][1]>0?best[0][0]:'neutral';
 }
 
-// ═══════════════════════════════════════════════════════
-//  AUDIO ENGINE
-// ═══════════════════════════════════════════════════════
+// ── Audio engine ─────────────────────────────────────────
 const song=document.getElementById('song');
-let ctx=null,analyser=null,srcNode=null,freqD=null,waveD=null,currentBlobUrl=null,currentFile=null;
+let ctx=null,analyser=null,srcNode=null,freqD=null,waveD=null,blobUrl=null,curFile=null;
 
-function ensureGraph(){
-  if(ctx) return true;
+function initCtx(){
+  // Called during user gesture → AudioContext starts in 'running' state on Chrome
+  if(ctx) return;
   try{
     ctx=new(window.AudioContext||window.webkitAudioContext)();
     analyser=ctx.createAnalyser();
@@ -318,28 +313,29 @@ function ensureGraph(){
     waveD=new Uint8Array(analyser.fftSize);
     srcNode=ctx.createMediaElementSource(song);
     srcNode.connect(analyser); analyser.connect(ctx.destination);
-    return true;
   }catch(e){
-    console.error('AudioContext init failed:',e);
-    ctx=null; return false;
+    console.warn('AudioContext:',e); ctx=null;
   }
 }
-function setupAudio(url){
-  if(currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-  currentBlobUrl=url;
-  const hasCtx=ensureGraph();
+
+function playAudio(url){
+  if(blobUrl) URL.revokeObjectURL(blobUrl);
+  blobUrl=url;
+  initCtx();       // create graph during user gesture (runs synchronously)
   song.src=url;
-  if(!hasCtx){
-    // No AudioContext (blocked by browser) — play directly without visualizer
-    song.play().catch(()=>{});
-    return;
-  }
-  // ctx.resume() is async — chain play() AFTER it resolves so audio actually comes out
-  (ctx.state!=='running' ? ctx.resume() : Promise.resolve())
-    .catch(()=>{})
-    .then(()=>song.play().catch(()=>{}));
+  song.play().catch(e=>{
+    if(e.name==='NotAllowedError'){
+      // Autoplay blocked — retry on next click
+      document.addEventListener('click',()=>song.play().catch(()=>{}),{once:true});
+    }
+  });
 }
+
 song.addEventListener('ended',()=>document.getElementById('btn-pause').textContent='▶ Играть');
+// Resume context if tab was backgrounded
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden&&ctx&&ctx.state==='suspended') ctx.resume();
+});
 
 function getBand(lo,hi){
   if(!analyser) return 0;
@@ -349,115 +345,58 @@ function getBand(lo,hi){
   return n?sum/(n*255):0;
 }
 
-const BBUF=new Float32Array(55);let bPtr=0,beatTimes=[],bpmEst=0,beatStr=0;
+const BBUF=new Float32Array(55); let bPtr=0;
 function processBeat(bass){
   BBUF[bPtr++%55]=bass;
   const avg=BBUF.reduce((a,b)=>a+b)/55;
-  const hit=bass>avg*1.38&&bass>0.18;
-  if(hit){
-    const now=performance.now(); beatTimes.push(now);
-    if(beatTimes.length>10) beatTimes.shift();
-    if(beatTimes.length>=4){
-      const diffs=[]; for(let i=1;i<beatTimes.length;i++) diffs.push(beatTimes[i]-beatTimes[i-1]);
-      bpmEst=60000/(diffs.reduce((a,b)=>a+b)/diffs.length);
-    }
-  }
-  return hit;
+  return bass>avg*1.38&&bass>0.18;
 }
 
-// ═══════════════════════════════════════════════════════
-//  BACKGROUND LAYER — Stars + Nebulae
-// ═══════════════════════════════════════════════════════
+// ── Background: stars + nebulae + aurora ─────────────────
 let T=0;
-const STARS=Array.from({length:180},()=>({
-  x:Math.random(),y:Math.random(),
-  r:.25+Math.random()*1.2,
-  ph:Math.random()*Math.PI*2,sp:.006+Math.random()*.025,
-  bright:Math.random()<.08
-}));
+const STARS=Array.from({length:180},()=>({x:Math.random(),y:Math.random(),r:.25+Math.random()*1.2,ph:Math.random()*Math.PI*2,sp:.006+Math.random()*.025,bright:Math.random()<.08}));
+const NEBS=Array.from({length:7},()=>({x:.1+Math.random()*.8,y:.1+Math.random()*.8,rx:.12+Math.random()*.22,ry:.1+Math.random()*.18,ho:(Math.random()-.5)*55,sp:(Math.random()-.5)*.00008,ph:Math.random()*Math.PI*2}));
+const AURORA=[{yf:.22,amp:55,sp:.28,ph:0.0,ho:0},{yf:.36,amp:45,sp:.18,ph:2.1,ho:35},{yf:.50,amp:40,sp:.22,ph:4.3,ho:-25},{yf:.65,amp:35,sp:.14,ph:1.7,ho:55}];
 
-function drawStars(energy){
+function drawBG(energy,beat){
+  bg.fillStyle=`rgba(3,3,16,${moodC.tr+(1-energy)*.06})`;
+  bg.fillRect(0,0,W,H);
   for(const s of STARS){
     s.ph+=s.sp;
-    const a=s.bright?.15+.55*(0.5+0.5*Math.sin(s.ph)):.05+.2*(0.5+0.5*Math.sin(s.ph));
-    const r=s.r*(1+energy*(s.bright?.8:.3)*Math.abs(Math.sin(s.ph)));
-    bg.beginPath();
-    bg.arc(s.x*W,s.y*H,r,0,Math.PI*2);
-    bg.fillStyle=s.bright?`rgba(255,255,255,${a})`:`rgba(200,210,255,${a})`;
-    bg.fill();
+    const a=s.bright?.15+.55*(.5+.5*Math.sin(s.ph)):.05+.2*(.5+.5*Math.sin(s.ph));
+    bg.beginPath(); bg.arc(s.x*W,s.y*H,s.r*(1+energy*(s.bright?.8:.3)*Math.abs(Math.sin(s.ph))),0,Math.PI*2);
+    bg.fillStyle=s.bright?`rgba(255,255,255,${a})`:`rgba(200,210,255,${a})`; bg.fill();
   }
-}
-
-const NEBS=Array.from({length:7},()=>({
-  x:.1+Math.random()*.8,y:.1+Math.random()*.8,
-  rx:.12+Math.random()*.22,ry:.1+Math.random()*.18,
-  ho:(Math.random()-.5)*55,
-  sp:(Math.random()-.5)*.00008,ph:Math.random()*Math.PI*2
-}));
-
-function drawNebulae(energy){
   for(const n of NEBS){
     n.ph+=n.sp;
-    const cx=(n.x+Math.sin(n.ph*.7)*.04)*W;
-    const cy=(n.y+Math.cos(n.ph*.5)*.03)*H;
-    const rx=n.rx*Math.min(W,H)*(1+energy*.25);
-    const ry=n.ry*Math.min(W,H)*(1+energy*.18);
+    const cx=(n.x+Math.sin(n.ph*.7)*.04)*W, cy=(n.y+Math.cos(n.ph*.5)*.03)*H;
+    const rx=n.rx*Math.min(W,H)*(1+energy*.25), ry=n.ry*Math.min(W,H)*(1+energy*.18);
     const h=moodC.hue+n.ho;
     const g=bg.createRadialGradient(cx,cy,0,cx,cy,Math.max(rx,ry));
     g.addColorStop(0,`hsla(${h},${moodC.sat+10}%,25%,${.07+energy*.04})`);
-    g.addColorStop(.55,`hsla(${h+25},${moodC.sat}%,18%,.035)`);
-    g.addColorStop(1,'transparent');
-    bg.save(); bg.scale(1,ry/rx);
-    bg.beginPath(); bg.arc(cx,cy*rx/ry,rx,0,Math.PI*2);
-    bg.fillStyle=g; bg.fill(); bg.restore();
+    g.addColorStop(.55,`hsla(${h+25},${moodC.sat}%,18%,.035)`); g.addColorStop(1,'transparent');
+    bg.save(); bg.scale(1,ry/rx); bg.beginPath(); bg.arc(cx,cy*rx/ry,rx,0,Math.PI*2); bg.fillStyle=g; bg.fill(); bg.restore();
   }
-}
-
-// ═══════════════════════════════════════════════════════
-//  AURORA RIBBONS
-// ═══════════════════════════════════════════════════════
-const AURORA_BANDS=[
-  {yf:.22,amp:55,sp:.28,ph:0.0,hoOff:0},
-  {yf:.36,amp:45,sp:.18,ph:2.1,hoOff:35},
-  {yf:.50,amp:40,sp:.22,ph:4.3,hoOff:-25},
-  {yf:.65,amp:35,sp:.14,ph:1.7,hoOff:55},
-];
-
-function drawAurora(energy,beat){
   const boost=(beat?18:0)+energy*60;
-  for(const b of AURORA_BANDS){
-    const baseY=b.yf*H;
-    const amp=b.amp+boost*(1-b.yf*.5);
-    const h=moodC.hue+b.hoOff;
-    const pts=120;
+  for(const b of AURORA){
+    const baseY=b.yf*H, amp=b.amp+boost*(1-b.yf*.5), h=moodC.hue+b.ho;
     bg.beginPath();
-    for(let i=0;i<=pts;i++){
-      const t=i/pts;
-      const x=t*W;
-      const nx=t*6.5+T*b.sp;
-      const ny=b.ph;
-      // Layered sine waves for organic feel
-      const y=baseY
-        +Math.sin(nx*1.2+ny)*amp*.55
-        +Math.sin(nx*2.1-ny*.7)*amp*.28
-        +Math.sin(nx*3.8+ny*.4)*amp*.17;
+    for(let i=0;i<=120;i++){
+      const t=i/120,x=t*W,nx=t*6.5+T*b.sp,ny=b.ph;
+      const y=baseY+Math.sin(nx*1.2+ny)*amp*.55+Math.sin(nx*2.1-ny*.7)*amp*.28+Math.sin(nx*3.8+ny*.4)*amp*.17;
       i===0?bg.moveTo(x,y):bg.lineTo(x,y);
     }
     bg.lineTo(W,H*1.3); bg.lineTo(0,H*1.3); bg.closePath();
     const alpha=.055+energy*.1;
     const grd=bg.createLinearGradient(0,baseY-amp,0,baseY+amp*1.8);
-    grd.addColorStop(0,'transparent');
-    grd.addColorStop(.3,`hsla(${h},${moodC.sat+15}%,60%,${alpha})`);
-    grd.addColorStop(.65,`hsla(${h+20},${moodC.sat+10}%,50%,${alpha*.55})`);
-    grd.addColorStop(1,'transparent');
+    grd.addColorStop(0,'transparent'); grd.addColorStop(.3,`hsla(${h},${moodC.sat+15}%,60%,${alpha})`);
+    grd.addColorStop(.65,`hsla(${h+20},${moodC.sat+10}%,50%,${alpha*.55})`); grd.addColorStop(1,'transparent');
     bg.fillStyle=grd; bg.fill();
   }
 }
 
-// ═══════════════════════════════════════════════════════
-//  PARTICLES
-// ═══════════════════════════════════════════════════════
-const parts=[];
+// ── Particles / Ripples / Tendrils ───────────────────────
+const parts=[],ripples=[],tendrils=[];
 
 class Particle{
   constructor(x,y,en,type='spark'){
@@ -486,10 +425,7 @@ class Particle{
   }
 }
 
-// ═══════════════════════════════════════════════════════
-//  RIPPLES
-// ═══════════════════════════════════════════════════════
-const ripples=[];
+// ── Ripples ──────────────────────────────────────────────
 class Ripple{
   constructor(x,y,hue,maxR){
     this.x=x;this.y=y;this.r=8;this.maxR=maxR||Math.min(W,H)*.42;
@@ -506,10 +442,7 @@ class Ripple{
   }
 }
 
-// ═══════════════════════════════════════════════════════
-//  TENDRILS (energy lines on heavy beats)
-// ═══════════════════════════════════════════════════════
-const tendrils=[];
+// ── Tendrils ─────────────────────────────────────────────
 class Tendril{
   constructor(angle,energy,R){
     this.a=angle; this.curve=(Math.random()-.5)*.1;
@@ -534,22 +467,15 @@ class Tendril{
 // ═══════════════════════════════════════════════════════
 //  MAIN VIZ FRAME
 // ═══════════════════════════════════════════════════════
-let vHue=225,vEnergy=0,vRot=0,vBeatStr=0,frameCount=0;
+let vHue=225,vEnergy=0,vRot=0;
 
 function vizFrame(bass,mid,high,energy,beat){
   lerpM();
   T+=.0055;
   vRot+=moodC.rot+energy*.003;
-  vBeatStr=beat?1:vBeatStr*.88;
 
   // ── Background layer ─────────────────────
-  bg.fillStyle=`rgba(3,3,16,${moodC.tr+(1-energy)*.06})`;
-  bg.fillRect(0,0,W,H);
-  drawStars(energy);
-  drawNebulae(energy);
-  drawAurora(energy,beat);
-
-  // ── Fx layer — clear ─────────────────────
+  drawBG(energy,beat);
   fx.clearRect(0,0,W,H);
 
   const R=Math.min(W,H)*(.17+bass*.07);
@@ -607,50 +533,27 @@ function vizFrame(bass,mid,high,energy,beat){
     fx.closePath(); fx.stroke(); fx.restore();
   }
 
-  // ── Ripples ───────────────────────────────
-  for(let i=ripples.length-1;i>=0;i--){
-    ripples[i].update(); ripples[i].draw();
-    if(ripples[i].life<=0) ripples.splice(i,1);
-  }
-
-  // ── Tendrils ──────────────────────────────
-  for(let i=tendrils.length-1;i>=0;i--){
-    tendrils[i].update(); tendrils[i].draw();
-    if(tendrils[i].life<=0) tendrils.splice(i,1);
-  }
-
-  // ── Particles ────────────────────────────
+  // ── Effects ───────────────────────────────
+  const tick=arr=>{for(let i=arr.length-1;i>=0;i--){arr[i].update();arr[i].draw();if(arr[i].life<=0)arr.splice(i,1);}};
+  tick(ripples); tick(tendrils);
   const pm=moodC.pm;
   if(beat){
     const n=Math.floor((18+bass*30)*pm);
     for(let i=0;i<n&&parts.length<450;i++) parts.push(new Particle(CX,CY,vEnergy,'spark'));
-    if(Math.random()<.5&&pm>.5){
-      const n2=Math.floor(6*pm);
-      for(let i=0;i<n2&&parts.length<450;i++) parts.push(new Particle(CX,CY,vEnergy,'orb'));
-    }
-    // Ripple
+    if(Math.random()<.5&&pm>.5) for(let i=0,n2=Math.floor(6*pm);i<n2&&parts.length<450;i++) parts.push(new Particle(CX,CY,vEnergy,'orb'));
     if(ripples.length<8) ripples.push(new Ripple(CX,CY,vHue));
-    // Tendrils on heavy beat
-    if(bass>.5&&tendrils.length<20){
-      const cnt=Math.floor(3+bass*8);
-      for(let i=0;i<cnt;i++) tendrils.push(new Tendril(Math.random()*Math.PI*2,bass,R));
-    }
-    // Off-center ripples
+    if(bass>.5&&tendrils.length<20) for(let i=0,cnt=Math.floor(3+bass*8);i<cnt;i++) tendrils.push(new Tendril(Math.random()*Math.PI*2,bass,R));
     if(Math.random()<.35){
-      const a=Math.random()*Math.PI*2, r=Math.min(W,H)*(0.1+Math.random()*.2);
-      ripples.push(new Ripple(CX+Math.cos(a)*r,CY+Math.sin(a)*r,vHue+40,Math.min(W,H)*.2));
-      const cnt=Math.floor(6*pm);
-      for(let i=0;i<cnt&&parts.length<450;i++) parts.push(new Particle(CX+Math.cos(a)*r,CY+Math.sin(a)*r,vEnergy,'spark'));
+      const a=Math.random()*Math.PI*2,r2=Math.min(W,H)*(.1+Math.random()*.2);
+      ripples.push(new Ripple(CX+Math.cos(a)*r2,CY+Math.sin(a)*r2,vHue+40,Math.min(W,H)*.2));
+      for(let i=0,cnt=Math.floor(6*pm);i<cnt&&parts.length<450;i++) parts.push(new Particle(CX+Math.cos(a)*r2,CY+Math.sin(a)*r2,vEnergy,'spark'));
     }
   }
   if(high>.25&&Math.random()<high*.2*pm&&parts.length<450){
-    const a=Math.random()*Math.PI*2, r=Math.min(W,H)*(0.1+Math.random()*.25);
-    parts.push(new Particle(CX+Math.cos(a)*r,CY+Math.sin(a)*r,high*.5,'spark'));
+    const a=Math.random()*Math.PI*2,r2=Math.min(W,H)*(.1+Math.random()*.25);
+    parts.push(new Particle(CX+Math.cos(a)*r2,CY+Math.sin(a)*r2,high*.5,'spark'));
   }
-  for(let i=parts.length-1;i>=0;i--){
-    parts[i].update(); parts[i].draw();
-    if(parts[i].life<=0) parts.splice(i,1);
-  }
+  tick(parts);
 
   // ── Bloom ─────────────────────────────────
   const bw=COF.width,bh=COF.height;
@@ -840,8 +743,7 @@ async function autoSync(file,lines){
   showSyncSt('🎵 Анализирую аудио…',true);
   try{
     const ab=await file.arrayBuffer();
-    const tmp=new(window.AudioContext||window.webkitAudioContext)();
-    const buf=await tmp.decodeAudioData(ab); tmp.close();
+    const buf=await ctx.decodeAudioData(ab);
 
     // Build waveform overview while we have the buffer
     buildWaveformData(buf);
@@ -990,8 +892,8 @@ async function loadFile(file){
   up.classList.add('fade'); setTimeout(()=>up.style.display='none',750);
 
   try{
-  currentFile=file;
-  setupAudio(URL.createObjectURL(file));
+  curFile=file;
+  playAudio(URL.createObjectURL(file));
 
   const{artist,title}=parseFilename(file.name);
   curArtist=artist; curTitle=title;
@@ -1020,7 +922,7 @@ async function loadFile(file){
     showFetch(`✓ Текст найден — синхронизирую…`);
     const _lyr0=lyrics;
     autoSync(file,raw).then(aligned=>{
-      if(currentFile===file){_lyr0.splice(0,_lyr0.length,...aligned);lastIdx=-2;}
+      if(curFile===file){_lyr0.splice(0,_lyr0.length,...aligned);lastIdx=-2;}
     });
 
   }else if(result&&!result.synced){
@@ -1034,7 +936,7 @@ async function loadFile(file){
       const timed=plainToTimed(result.text,dur);
       detectChorus(timed);
       const aligned=await autoSync(file,timed);
-      if(currentFile===file){lyrics=aligned;setLyricsVisible(true);document.getElementById('btn-lyrics').classList.add('on');}
+      if(curFile===file){lyrics=aligned;setLyricsVisible(true);document.getElementById('btn-lyrics').classList.add('on');}
     }
     applyPlain();
 
@@ -1045,6 +947,7 @@ async function loadFile(file){
     // Still build waveform
     if(file.size<60*1024*1024){
       file.arrayBuffer().then(ab=>{
+        if(ctx) return ctx.decodeAudioData(ab).then(b=>buildWaveformData(b)).catch(()=>{});
         const t=new(window.AudioContext||window.webkitAudioContext)();
         t.decodeAudioData(ab).then(b=>{buildWaveformData(b);t.close();}).catch(()=>t.close());
       }).catch(()=>{});
@@ -1093,9 +996,9 @@ document.getElementById('search-btn').addEventListener('click',async()=>{
     document.getElementById('no-lrc').classList.remove('show');
     showFetch('✓ Текст загружен',2500);
     // Auto-sync с текущим файлом
-    if(currentFile&&result.synced){
-      const _file=currentFile,_lyr=lyrics;
-      autoSync(_file,_lyr).then(a=>{if(currentFile===_file){_lyr.splice(0,_lyr.length,...a);lastIdx=-2;}});
+    if(curFile&&result.synced){
+      const _file=curFile,_lyr=lyrics;
+      autoSync(_file,_lyr).then(a=>{if(curFile===_file){_lyr.splice(0,_lyr.length,...a);lastIdx=-2;}});
     }
   }else{
     ss.textContent='Не найдено'; ss.className='err';
@@ -1115,7 +1018,7 @@ document.getElementById('skip-btn').addEventListener('click',()=>document.getEle
 //  CONTROLS
 // ═══════════════════════════════════════════════════════
 document.getElementById('btn-pause').addEventListener('click',()=>{
-  if(!currentBlobUrl) return;
+  if(!blobUrl) return;
   const toggle=()=>{
     if(song.paused){song.play().catch(()=>{});document.getElementById('btn-pause').textContent='⏸ Пауза';}
     else{song.pause();document.getElementById('btn-pause').textContent='▶ Играть';}
@@ -1137,8 +1040,8 @@ document.getElementById('btn-new').addEventListener('click',()=>{
   document.getElementById('prog-fill').style.width='0%';
   document.getElementById('btn-pause').textContent='⏸ Пауза';
   document.getElementById('btn-lyrics').classList.remove('on');
-  if(currentBlobUrl){URL.revokeObjectURL(currentBlobUrl);currentBlobUrl=null;}
-  currentFile=null; wvData=null;
+  if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl=null;}
+  curFile=null; wvData=null;
   document.getElementById('wv-bar').classList.remove('show');
   setMood('neutral',true);
   const up=document.getElementById('upload');
