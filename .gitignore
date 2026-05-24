@@ -1,15 +1,37 @@
-# Локальные музыкальные файлы (не пушим в репо)
-musig/
+# ── Audio files (don't commit music) ───────────────────────
 *.mp3
 *.wav
 *.flac
 *.ogg
 *.m4a
+*.aac
+*.opus
+*.wma
+*.aiff
+*.aif
+musig/
 
-# Системные файлы
+# ── OS / editor ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
 *.exe
 *.lnk
 *.url
-desktop.ini
-.DS_Store
-Thumbs.db
+.idea/
+.vscode/settings.json
+
+# ── Node.js (if ever added) ──────────────────────────────────
+node_modules/
+.next/
+dist/
+.env
+.env.local
+npm-debug.log*
+
+# ── Python ──────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
